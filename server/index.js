@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const { Resend } = require('resend')
 const { google } = require('googleapis')
+const { randomUUID } = require('crypto')
 const db = require('./db')
 
 const app = express()
@@ -23,7 +24,7 @@ async function logActivity(actorId, actorEmail, actorName, action, detail = null
   try {
     await db.query(
       'INSERT INTO activity (id, actor_id, actor_email, actor_name, action, detail) VALUES ($1,$2,$3,$4,$5,$6)',
-      [crypto.randomUUID(), actorId, actorEmail, actorName, action, detail]
+      [randomUUID(), actorId, actorEmail, actorName, action, detail]
     )
   } catch (err) {
     console.error('logActivity failed:', err.message)
@@ -129,7 +130,7 @@ app.post('/api/users', requireAuth, async (req, res) => {
   const exists = await db.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email.trim()])
   if (exists.length) return res.status(409).json({ error: 'User already exists' })
   const hash = await bcrypt.hash(INITIAL_PASSWORD, 10)
-  const id = crypto.randomUUID()
+  const id = randomUUID()
   const normalised = email.trim().toLowerCase()
   await db.query(
     'INSERT INTO users (id, email, password_hash, added_by) VALUES ($1, $2, $3, $4)',

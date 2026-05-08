@@ -1,5 +1,6 @@
 const { Pool } = require('pg')
 const bcrypt = require('bcryptjs')
+const { randomUUID } = require('crypto')
 
 const INITIAL_PASSWORD = 'farmPassword2026'
 const SEED_EMAILS = [
@@ -66,7 +67,7 @@ async function init() {
     for (const email of SEED_EMAILS) {
       await pool.query(
         'INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING',
-        [crypto.randomUUID(), email, hash]
+        [randomUUID(), email, hash]
       )
     }
     console.log(`Seeded ${SEED_EMAILS.length} users`)
