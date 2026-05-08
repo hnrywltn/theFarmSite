@@ -4,7 +4,7 @@ import Footer from '../components/Footer'
 import { useAuth } from '../context/AuthContext'
 
 export default function GalleryPage() {
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, token } = useAuth()
   const [photos, setPhotos] = useState([])
   const [selected, setSelected] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -27,7 +27,11 @@ export default function GalleryPage() {
     const formData = new FormData()
     for (const file of files) formData.append('photos', file)
     try {
-      await fetch('/api/photos/upload', { method: 'POST', body: formData })
+      await fetch('/api/photos/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
       loadPhotos()
     } catch {}
     finally {
@@ -41,7 +45,10 @@ export default function GalleryPage() {
     if (!window.confirm(`Delete "${photo.name}"?`)) return
     setDeleting(photo.id)
     try {
-      await fetch(`/api/photos/${photo.id}`, { method: 'DELETE' })
+      await fetch(`/api/photos/${photo.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
       setPhotos((prev) => prev.filter((p) => p.id !== photo.id))
       if (selected?.id === photo.id) setSelected(null)
     } catch {}

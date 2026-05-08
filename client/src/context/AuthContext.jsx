@@ -1,29 +1,42 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, useCallback } from 'react'
 
-const PASSWORD = 'farmPassword2026'
 const AuthContext = createContext(null)
 
+function getStored() {
+  try {
+    const token = sessionStorage.getItem('token')
+    const user = JSON.parse(sessionStorage.getItem('user') || 'null')
+    return { token, user }
+  } catch {
+    return { token: null, user: null }
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(
-    () => sessionStorage.getItem('auth') === '1'
-  )
+  const [{ token, user }, setAuth] = useState(getStored)
 
-  function login(password) {
-    if (password === PASSWORD) {
-      sessionStorage.setItem('auth', '1')
-      setIsLoggedIn(true)
-      return true
-    }
-    return false
-  }
+  const login = useCallback(async (email, password) => {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    const data = await res.json()
+    if (!res.ok) return { ok: false, error: data.error }
+    sessionStorage.setItem('token', data.token)
+    sessionStorage.setItem('user', JSON.stringify(data.user))
+    setAuth({ token: data.token, user: data.user })
+    return { ok: true }
+  }, [])
 
-  function logout() {
-    sessionStorage.removeItem('auth')
-    setIsLoggedIn(false)
-  }
+  const logout = useCallback(() => {
+    sessionStorage.removeItem('token')
+    sessionStorage.removeItem('user')
+    setAuth({ token: null, user: null })
+  }, [])
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, login, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn: !!token, token, user, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

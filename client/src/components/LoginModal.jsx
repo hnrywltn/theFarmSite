@@ -3,15 +3,21 @@ import { useAuth } from '../context/AuthContext'
 
 export default function LoginModal({ onClose }) {
   const { login } = useAuth()
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (login(password)) {
+    setLoading(true)
+    setError('')
+    const result = await login(email, password)
+    setLoading(false)
+    if (result.ok) {
       onClose()
     } else {
-      setError(true)
+      setError(result.error)
       setPassword('')
     }
   }
@@ -28,21 +34,29 @@ export default function LoginModal({ onClose }) {
         <h2 className="font-serif text-2xl text-farm-cream font-light mb-6">Sign In</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
-            type="password"
-            value={password}
-            onChange={(e) => { setPassword(e.target.value); setError(false) }}
-            placeholder="Password"
+            type="email"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError('') }}
+            placeholder="Email"
             autoFocus
+            required
             className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-3 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
           />
-          {error && (
-            <p className="text-red-400 text-xs">Incorrect password.</p>
-          )}
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError('') }}
+            placeholder="Password"
+            required
+            className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-3 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+          />
+          {error && <p className="text-red-400 text-xs">{error}</p>}
           <button
             type="submit"
-            className="label-sm text-farm-gold border border-farm-gold/40 px-6 py-3 hover:bg-farm-gold/10 transition-colors"
+            disabled={loading}
+            className="label-sm text-farm-gold border border-farm-gold/40 px-6 py-3 hover:bg-farm-gold/10 transition-colors disabled:opacity-40"
           >
-            Sign In
+            {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
       </div>
