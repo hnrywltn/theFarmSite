@@ -60,14 +60,21 @@ if (process.env.RESEND_API_KEY) resend = new Resend(process.env.RESEND_API_KEY)
 // ─── Google Drive auth ─────────────────────────────────────────────────────────
 let drive = null
 if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
-  const auth = new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_CLIENT_EMAIL,
-      private_key: Buffer.from(process.env.GOOGLE_PRIVATE_KEY, 'base64').toString('utf8'),
-    },
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  })
-  drive = google.drive({ version: 'v3', auth })
+  try {
+    const { createPrivateKey } = require('crypto')
+    const decodedKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY, 'base64').toString('utf8')
+    console.log('Key head:', JSON.stringify(decodedKey.slice(0, 40)))
+    console.log('Key tail:', JSON.stringify(decodedKey.slice(-40)))
+    createPrivateKey(decodedKey)
+    console.log('Key import: OK')
+    const auth = new google.auth.GoogleAuth({
+      credentials: { client_email: process.env.GOOGLE_CLIENT_EMAIL, private_key: decodedKey },
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    drive = google.drive({ version: 'v3', auth })
+  } catch (err) {
+    console.error('Drive init failed:', err.message)
+  }
 }
 
 app.use(cors())
