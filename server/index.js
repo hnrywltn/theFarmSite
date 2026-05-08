@@ -68,6 +68,19 @@ app.get('/api/photos/:id', async (req, res) => {
   }
 })
 
+// ─── Photos: delete from Drive ────────────────────────────────────────────────
+app.delete('/api/photos/:id', async (req, res) => {
+  if (!drive) return res.status(503).json({ error: 'Drive not configured' })
+
+  try {
+    await drive.files.delete({ fileId: req.params.id, supportsAllDrives: true })
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('Drive delete failed:', err.message)
+    res.status(500).json({ error: 'Failed to delete' })
+  }
+})
+
 // ─── Photos: upload to Drive folder ───────────────────────────────────────────
 app.post('/api/photos/upload', upload.array('photos', 20), async (req, res) => {
   if (!drive) return res.status(503).json({ error: 'Drive not configured' })

@@ -6,6 +6,7 @@ export default function GalleryPage() {
   const [photos, setPhotos] = useState([])
   const [selected, setSelected] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(null)
   const fileInputRef = useRef(null)
 
   function loadPhotos() {
@@ -20,20 +21,29 @@ export default function GalleryPage() {
   async function handleUpload(e) {
     const files = e.target.files
     if (!files?.length) return
-
     setUploading(true)
     const formData = new FormData()
     for (const file of files) formData.append('photos', file)
-
     try {
       await fetch('/api/photos/upload', { method: 'POST', body: formData })
       loadPhotos()
-    } catch {
-      // silent fail — Drive will have it or won't
-    } finally {
+    } catch {}
+    finally {
       setUploading(false)
       e.target.value = ''
     }
+  }
+
+  async function handleDelete(photo, e) {
+    e.stopPropagation()
+    if (!window.confirm(`Delete "${photo.name}"?`)) return
+    setDeleting(photo.id)
+    try {
+      await fetch(`/api/photos/${photo.id}`, { method: 'DELETE' })
+      setPhotos((prev) => prev.filter((p) => p.id !== photo.id))
+      if (selected?.id === photo.id) setSelected(null)
+    } catch {}
+    finally { setDeleting(null) }
   }
 
   return (
@@ -49,7 +59,6 @@ export default function GalleryPage() {
                 A Glimpse of the Land
               </h1>
             </div>
-
             <div>
               <input
                 ref={fileInputRef}
@@ -71,18 +80,31 @@ export default function GalleryPage() {
 
           <div className="columns-2 md:columns-3 gap-3 space-y-3">
             {photos.map((photo) => (
-              <button
-                key={photo.id}
-                onClick={() => setSelected(photo)}
-                className="w-full overflow-hidden group block"
-              >
-                <img
-                  src={`/api/photos/${photo.id}`}
-                  alt={photo.name}
-                  className="w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  loading="lazy"
-                />
-              </button>
+              <div key={photo.id} className="relative group block">
+                <button
+                  onClick={() => setSelected(photo)}
+                  className="w-full overflow-hidden block"
+                >
+                  <img
+                    src={`/api/photos/${photo.id}`}
+                    alt={photo.name}
+                    className="w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                </button>
+
+                {/* Delete button — appears on hover */}
+                <button
+                  onClick={(e) => handleDelete(photo, e)}
+                  disabled={deleting === photo.id}
+                  className="absolute top-2 right-2 p-1.5 bg-farm-dark/70 text-farm-cream/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-30"
+                  title="Delete photo"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -102,14 +124,25 @@ export default function GalleryPage() {
             className="max-h-[90vh] max-w-[90vw] object-contain"
             onClick={(e) => e.stopPropagation()}
           />
-          <button
-            className="absolute top-6 right-6 text-farm-cream/50 hover:text-farm-cream transition-colors"
-            onClick={() => setSelected(null)}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="absolute top-6 right-6 flex gap-3">
+            <button
+              onClick={(e) => handleDelete(selected, e)}
+              className="p-2 text-farm-cream/40 hover:text-red-400 transition-colors"
+              title="Delete photo"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            </button>
+            <button
+              className="p-2 text-farm-cream/40 hover:text-farm-cream transition-colors"
+              onClick={() => setSelected(null)}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>
