@@ -65,12 +65,73 @@ function ChangePassword({ token }) {
   )
 }
 
+const INITIAL_PASSWORD = 'farmPassword2026'
+const SITE_URL = 'https://nanaandpapas.com'
+
+function InviteModal({ email, onClose }) {
+  const [copied, setCopied] = useState(false)
+  const text = `You've been added to nanaandpapas.com.\n\nWebsite: ${SITE_URL}\nEmail: ${email}\nPassword: ${INITIAL_PASSWORD}\n\nYou can change your password in the admin panel after signing in.`
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-farm-dark/90 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-farm-dark border border-farm-gold/20 p-8 w-full max-w-sm flex flex-col gap-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-serif text-xl text-farm-cream font-light">User Added</h2>
+        <div className="bg-farm-green/30 border border-farm-cream/10 p-4 flex flex-col gap-2">
+          <Row label="Website" value={SITE_URL} />
+          <Row label="Email" value={email} />
+          <Row label="Password" value={INITIAL_PASSWORD} />
+        </div>
+        <p className="text-farm-cream/40 text-xs leading-relaxed">
+          Send this to {email} so they can sign in. They can change their password in the admin panel.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={handleCopy}
+            className="label-sm text-farm-gold border border-farm-gold/40 px-5 py-2.5 hover:bg-farm-gold/10 transition-colors flex-1"
+          >
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+          <button
+            onClick={onClose}
+            className="label-sm text-farm-cream/40 border border-farm-cream/15 px-5 py-2.5 hover:text-farm-cream hover:border-farm-cream/30 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between gap-4 text-sm">
+      <span className="text-farm-cream/40 shrink-0">{label}</span>
+      <span className="text-farm-cream font-mono text-right break-all">{value}</span>
+    </div>
+  )
+}
+
 function UserManagement({ token, currentUserId }) {
   const [users, setUsers] = useState([])
   const [newEmail, setNewEmail] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
   const [actionLoading, setActionLoading] = useState(null)
+  const [inviteEmail, setInviteEmail] = useState(null)
 
   useEffect(() => {
     fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
@@ -93,6 +154,7 @@ function UserManagement({ token, currentUserId }) {
     if (res.ok) {
       setUsers((prev) => [...prev, data])
       setNewEmail('')
+      setInviteEmail(data.email)
     } else {
       setAddError(data.error)
     }
@@ -122,6 +184,8 @@ function UserManagement({ token, currentUserId }) {
   }
 
   return (
+    <>
+    {inviteEmail && <InviteModal email={inviteEmail} onClose={() => setInviteEmail(null)} />}
     <div className="border border-farm-cream/10 p-6">
       <h2 className="font-serif text-xl text-farm-cream mb-6">Users</h2>
 
@@ -179,6 +243,7 @@ function UserManagement({ token, currentUserId }) {
         })}
       </div>
     </div>
+    </>
   )
 }
 
