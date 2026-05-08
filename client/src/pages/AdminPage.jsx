@@ -293,8 +293,75 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
   )
 }
 
+function relativeTime(iso) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  if (d === 1) return 'yesterday'
+  if (d < 7) return `${d}d ago`
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function actionLabel(action, detail) {
+  switch (action) {
+    case 'signed_in':       return 'signed in'
+    case 'uploaded_photos': return `uploaded ${detail} photo${detail === '1' ? '' : 's'}`
+    case 'deleted_photo':   return 'deleted a photo'
+    case 'invited_user':    return `invited ${detail}`
+    case 'suspended_user':  return `suspended ${detail}`
+    case 'unsuspended_user':return `unsuspended ${detail}`
+    case 'removed_user':    return `removed ${detail}`
+    case 'changed_password':return 'changed their password'
+    case 'updated_name':    return detail ? `set display name to "${detail}"` : 'cleared their display name'
+    default:                return action
+  }
+}
+
+function ActivityLog({ token }) {
+  const [entries, setEntries] = useState([])
+
+  useEffect(() => {
+    fetch('/api/activity', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => Array.isArray(data) && setEntries(data))
+      .catch(() => {})
+  }, [token])
+
+  return (
+    <div className="border border-farm-cream/10 p-6">
+      <h2 className="font-serif text-xl text-farm-cream mb-6">Activity</h2>
+      {entries.length === 0 ? (
+        <p className="text-farm-cream/30 text-sm">No activity yet.</p>
+      ) : (
+        <div className="divide-y divide-farm-cream/10 max-h-96 overflow-y-auto">
+          {entries.map((e) => (
+            <div key={e.id} className="flex items-baseline justify-between gap-4 py-2.5">
+              <p className="text-sm text-farm-cream/70">
+                <span className="text-farm-cream font-medium">{e.actorName}</span>
+                {' '}
+                <span>{actionLabel(e.action, e.detail)}</span>
+              </p>
+              <span
+                className="text-farm-cream/30 text-xs shrink-0"
+                title={new Date(e.timestamp).toLocaleString()}
+              >
+                {relativeTime(e.timestamp)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const { token, user, updateProfile } = useAuth()
+  const isAdmin = user?.email === ADMIN_EMAIL
 
   return (
     <div className="font-sans bg-farm-dark min-h-screen flex flex-col">
@@ -321,10 +388,12 @@ export default function AdminPage() {
             ))}
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-6 mb-6">
             <AccountSettings token={token} currentName={user?.name} updateProfile={updateProfile} />
             <UserManagement token={token} currentUserId={user?.id} currentUserEmail={user?.email} />
           </div>
+
+          {isAdmin && <ActivityLog token={token} />}
         </div>
       </main>
 

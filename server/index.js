@@ -53,6 +53,28 @@ async function ensureUsers() {
   console.log(`Seeded users.json with ${users.length} users`)
 }
 
+// ─── Activity log ─────────────────────────────────────────────────────────────
+const ACTIVITY_FILE = path.join(__dirname, 'activity.json')
+
+function logActivity(actorId, actorEmail, actorName, action, detail = null) {
+  let entries = []
+  try { entries = JSON.parse(fs.readFileSync(ACTIVITY_FILE, 'utf8')) } catch {}
+  entries.unshift({ id: crypto.randomUUID(), timestamp: new Date().toISOString(), actorId, actorEmail, actorName, action, detail })
+  if (entries.length > 500) entries.length = 500
+  try { fs.writeFileSync(ACTIVITY_FILE, JSON.stringify(entries, null, 2)) } catch {}
+}
+
+function displayName(user) {
+  return user?.name || user?.email?.split('@')[0] || 'unknown'
+}
+
+function displayNameById(userId) {
+  try {
+    const u = loadUsers().find((u) => u.id === userId)
+    return displayName(u)
+  } catch { return 'unknown' }
+}
+
 // ─── Auth middleware ───────────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
   const auth = req.headers.authorization
@@ -95,6 +117,7 @@ app.post('/api/auth/login', async (req, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash)
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' })
+  logActivity(user.id, user.email, displayName(user), 'signed_in')
   res.json({ token, user: { id: user.id, email: user.email, name: user.name || null } })
 })
 
@@ -109,6 +132,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Current password is incorrect' })
   user.passwordHash = await bcrypt.hash(newPassword, 10)
   saveUsers(users)
+  logActivity(user.id, user.email, displayName(user), 'changed_password')
   res.json({ ok: true })
 })
 
@@ -121,6 +145,7 @@ app.patch('/api/users/me', requireAuth, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' })
   user.name = name.trim() || null
   saveUsers(users)
+  logActivity(user.id, user.email, displayName(user), 'updated_name', user.name)
   res.json({ id: user.id, email: user.email, name: user.name })
 })
 
@@ -150,6 +175,7 @@ app.post('/api/users', requireAuth, async (req, res) => {
   }
   users.push(newUser)
   saveUsers(users)
+  logActivity(req.user.id, req.user.email, displayNameById(req.user.id), 'invited_user', newUser.email)
   res.json({ id: newUser.id, email: newUser.email, addedBy: newUser.addedBy, suspended: false, createdAt: newUser.createdAt })
 })
 
@@ -163,6 +189,7 @@ app.patch('/api/users/:id', requireAuth, (req, res) => {
   if (!isAdmin && users[idx].addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
   users[idx].suspended = req.body.suspended ?? !users[idx].suspended
   saveUsers(users)
+  logActivity(req.user.id, req.user.email, displayNameById(req.user.id), users[idx].suspended ? 'suspended_user' : 'unsuspended_user', users[idx].email)
   const { id, email, addedBy, suspended, createdAt } = users[idx]
   res.json({ id, email, addedBy, suspended, createdAt })
 })
@@ -176,6 +203,7 @@ app.delete('/api/users/:id', requireAuth, (req, res) => {
   const isAdmin = req.user.email === ADMIN_EMAIL
   if (!isAdmin && user.addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
   saveUsers(users.filter((u) => u.id !== req.params.id))
+  logActivity(req.user.id, req.user.email, displayNameById(req.user.id), 'removed_user', user.email)
   res.json({ ok: true })
 })
 
@@ -225,6 +253,7 @@ app.delete('/api/photos/:id', requireAuth, async (req, res) => {
   if (!drive) return res.status(503).json({ error: 'Drive not configured' })
   try {
     await drive.files.delete({ fileId: req.params.id, supportsAllDrives: true })
+    logActivity(req.user.id, req.user.email, displayNameById(req.user.id), 'deleted_photo')
     res.json({ ok: true })
   } catch (err) {
     console.error('Drive delete failed:', err.message)
@@ -257,11 +286,20 @@ app.post('/api/photos/upload', requireAuth, upload.array('photos', 20), async (r
         })
       )
     )
+    logActivity(req.user.id, req.user.email, displayName(uploader), 'uploaded_photos', String(req.files.length))
     res.json(uploaded.map((r) => r.data))
   } catch (err) {
     console.error('Drive upload failed:', err.message)
     res.status(500).json({ error: 'Upload failed' })
   }
+})
+
+// ─── Activity log: fetch (admin only) ────────────────────────────────────────
+app.get('/api/activity', requireAuth, (req, res) => {
+  if (req.user.email !== ADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' })
+  let entries = []
+  try { entries = JSON.parse(fs.readFileSync(ACTIVITY_FILE, 'utf8')) } catch {}
+  res.json(entries)
 })
 
 // ─── Contact form ──────────────────────────────────────────────────────────────
