@@ -9,7 +9,7 @@ export default function Photos() {
   useEffect(() => {
     fetch('/api/photos')
       .then((r) => r.json())
-      .then((files) => setPhotos(files))
+      .then((data) => Array.isArray(data) && setPhotos(data))
       .catch(() => {})
   }, [])
 

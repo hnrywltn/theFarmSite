@@ -14,7 +14,7 @@ export default function GalleryPage() {
   function loadPhotos() {
     fetch('/api/photos')
       .then((r) => r.json())
-      .then(setPhotos)
+      .then((data) => Array.isArray(data) && setPhotos(data))
       .catch(() => {})
   }
 

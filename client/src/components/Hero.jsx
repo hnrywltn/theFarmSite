@@ -26,7 +26,7 @@ export default function Hero() {
   useEffect(() => {
     fetch('/api/photos')
       .then((r) => r.json())
-      .then(setPhotos)
+      .then((data) => Array.isArray(data) && setPhotos(data))
       .catch(() => {})
   }, [])
 
