@@ -2,76 +2,42 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') })
 const express = require('express')
 const cors = require('cors')
 const path = require('path')
-const fs = require('fs')
 const { Readable } = require('stream')
 const multer = require('multer')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const { Resend } = require('resend')
 const { google } = require('googleapis')
+const db = require('./db')
 
 const app = express()
 const PORT = process.env.PORT || 3001
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
 const JWT_SECRET = process.env.JWT_SECRET || 'farm-dev-secret-change-in-prod'
-const USERS_FILE = path.join(__dirname, 'users.json')
 const INITIAL_PASSWORD = 'farmPassword2026'
 const ADMIN_EMAIL = 'hnrywltn@gmail.com'
-const SEED_EMAILS = [
-  'hnrywltn@gmail.com',
-  'bshackelford11@gmail.com',
-  'ceci.kelly54@gmail.com',
-  'chuckiie@hotmail.com',
-  'me@zach.us',
-  'efechner21@gmail.com',
-  'hannah.w.kelly@gmail.com',
-]
-
-// ─── Users file ────────────────────────────────────────────────────────────────
-function loadUsers() {
-  return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'))
-}
-
-function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2))
-}
-
-async function ensureUsers() {
-  if (fs.existsSync(USERS_FILE)) return
-  const hash = await bcrypt.hash(INITIAL_PASSWORD, 10)
-  const users = SEED_EMAILS.map((email) => ({
-    id: crypto.randomUUID(),
-    email,
-    name: null,
-    passwordHash: hash,
-    addedBy: null,
-    suspended: false,
-    createdAt: new Date().toISOString(),
-  }))
-  saveUsers(users)
-  console.log(`Seeded users.json with ${users.length} users`)
-}
 
 // ─── Activity log ─────────────────────────────────────────────────────────────
-const ACTIVITY_FILE = path.join(__dirname, 'activity.json')
-
-function logActivity(actorId, actorEmail, actorName, action, detail = null) {
-  let entries = []
-  try { entries = JSON.parse(fs.readFileSync(ACTIVITY_FILE, 'utf8')) } catch {}
-  entries.unshift({ id: crypto.randomUUID(), timestamp: new Date().toISOString(), actorId, actorEmail, actorName, action, detail })
-  if (entries.length > 500) entries.length = 500
-  try { fs.writeFileSync(ACTIVITY_FILE, JSON.stringify(entries, null, 2)) } catch {}
+async function logActivity(actorId, actorEmail, actorName, action, detail = null) {
+  try {
+    await db.query(
+      'INSERT INTO activity (id, actor_id, actor_email, actor_name, action, detail) VALUES ($1,$2,$3,$4,$5,$6)',
+      [crypto.randomUUID(), actorId, actorEmail, actorName, action, detail]
+    )
+  } catch (err) {
+    console.error('logActivity failed:', err.message)
+  }
 }
 
 function displayName(user) {
   return user?.name || user?.email?.split('@')[0] || 'unknown'
 }
 
-function displayNameById(userId) {
+async function displayNameById(userId) {
   try {
-    const u = loadUsers().find((u) => u.id === userId)
-    return displayName(u)
+    const rows = await db.query('SELECT name, email FROM users WHERE id = $1', [userId])
+    return displayName(rows[0])
   } catch { return 'unknown' }
 }
 
@@ -110,100 +76,94 @@ app.use(express.json())
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' })
-  const users = loadUsers()
-  const user = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+  const rows = await db.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email.trim()])
+  const user = db.mapUser(rows[0])
   if (!user) return res.status(401).json({ error: 'Invalid credentials' })
   if (user.suspended) return res.status(403).json({ error: 'Account suspended' })
   const ok = await bcrypt.compare(password, user.passwordHash)
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' })
   logActivity(user.id, user.email, displayName(user), 'signed_in')
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name || null } })
+  res.json({ token, user: { id: user.id, email: user.email, name: user.name } })
 })
 
 // ─── Auth: change password ─────────────────────────────────────────────────────
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Missing fields' })
-  const users = loadUsers()
-  const user = users.find((u) => u.id === req.user.id)
+  const rows = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id])
+  const user = db.mapUser(rows[0])
   if (!user) return res.status(404).json({ error: 'User not found' })
   const ok = await bcrypt.compare(currentPassword, user.passwordHash)
   if (!ok) return res.status(401).json({ error: 'Current password is incorrect' })
-  user.passwordHash = await bcrypt.hash(newPassword, 10)
-  saveUsers(users)
+  const hash = await bcrypt.hash(newPassword, 10)
+  await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, user.id])
   logActivity(user.id, user.email, displayName(user), 'changed_password')
   res.json({ ok: true })
 })
 
 // ─── Users: me (update profile) ───────────────────────────────────────────────
-app.patch('/api/users/me', requireAuth, (req, res) => {
+app.patch('/api/users/me', requireAuth, async (req, res) => {
   const { name } = req.body
   if (typeof name !== 'string') return res.status(400).json({ error: 'Name required' })
-  const users = loadUsers()
-  const user = users.find((u) => u.id === req.user.id)
-  if (!user) return res.status(404).json({ error: 'User not found' })
-  user.name = name.trim() || null
-  saveUsers(users)
-  logActivity(user.id, user.email, displayName(user), 'updated_name', user.name)
-  res.json({ id: user.id, email: user.email, name: user.name })
+  const trimmed = name.trim() || null
+  const rows = await db.query(
+    'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, email, name',
+    [trimmed, req.user.id]
+  )
+  if (!rows.length) return res.status(404).json({ error: 'User not found' })
+  logActivity(req.user.id, req.user.email, displayName(rows[0]), 'updated_name', trimmed)
+  res.json({ id: rows[0].id, email: rows[0].email, name: rows[0].name })
 })
 
 // ─── Users: list ──────────────────────────────────────────────────────────────
-app.get('/api/users', requireAuth, (req, res) => {
-  const users = loadUsers()
-  res.json(users.map(({ id, email, name, addedBy, suspended, createdAt }) => ({ id, email, name, addedBy, suspended, createdAt })))
+app.get('/api/users', requireAuth, async (req, res) => {
+  const rows = await db.query('SELECT id, email, name, added_by, suspended, created_at FROM users ORDER BY created_at ASC')
+  res.json(rows.map((r) => ({ id: r.id, email: r.email, name: r.name, addedBy: r.added_by, suspended: r.suspended, createdAt: r.created_at })))
 })
 
 // ─── Users: add ───────────────────────────────────────────────────────────────
 app.post('/api/users', requireAuth, async (req, res) => {
   const { email } = req.body
   if (!email) return res.status(400).json({ error: 'Email required' })
-  const users = loadUsers()
-  if (users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())) {
-    return res.status(409).json({ error: 'User already exists' })
-  }
+  const exists = await db.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email.trim()])
+  if (exists.length) return res.status(409).json({ error: 'User already exists' })
   const hash = await bcrypt.hash(INITIAL_PASSWORD, 10)
-  const newUser = {
-    id: crypto.randomUUID(),
-    email: email.trim().toLowerCase(),
-    name: null,
-    passwordHash: hash,
-    addedBy: req.user.id,
-    suspended: false,
-    createdAt: new Date().toISOString(),
-  }
-  users.push(newUser)
-  saveUsers(users)
-  logActivity(req.user.id, req.user.email, displayNameById(req.user.id), 'invited_user', newUser.email)
-  res.json({ id: newUser.id, email: newUser.email, addedBy: newUser.addedBy, suspended: false, createdAt: newUser.createdAt })
+  const id = crypto.randomUUID()
+  const normalised = email.trim().toLowerCase()
+  await db.query(
+    'INSERT INTO users (id, email, password_hash, added_by) VALUES ($1, $2, $3, $4)',
+    [id, normalised, hash, req.user.id]
+  )
+  const created = (await db.query('SELECT created_at FROM users WHERE id = $1', [id]))[0].created_at
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'invited_user', normalised)
+  res.json({ id, email: normalised, addedBy: req.user.id, suspended: false, createdAt: created })
 })
 
 // ─── Users: suspend / unsuspend ───────────────────────────────────────────────
-app.patch('/api/users/:id', requireAuth, (req, res) => {
-  const users = loadUsers()
-  const idx = users.findIndex((u) => u.id === req.params.id)
-  if (idx === -1) return res.status(404).json({ error: 'Not found' })
-  if (users[idx].id === req.user.id) return res.status(403).json({ error: 'Cannot modify your own account' })
+app.patch('/api/users/:id', requireAuth, async (req, res) => {
+  const rows = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id])
+  const target = db.mapUser(rows[0])
+  if (!target) return res.status(404).json({ error: 'Not found' })
+  if (target.id === req.user.id) return res.status(403).json({ error: 'Cannot modify your own account' })
   const isAdmin = req.user.email === ADMIN_EMAIL
-  if (!isAdmin && users[idx].addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
-  users[idx].suspended = req.body.suspended ?? !users[idx].suspended
-  saveUsers(users)
-  logActivity(req.user.id, req.user.email, displayNameById(req.user.id), users[idx].suspended ? 'suspended_user' : 'unsuspended_user', users[idx].email)
-  const { id, email, addedBy, suspended, createdAt } = users[idx]
-  res.json({ id, email, addedBy, suspended, createdAt })
+  if (!isAdmin && target.addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
+  const newSuspended = req.body.suspended ?? !target.suspended
+  await db.query('UPDATE users SET suspended = $1 WHERE id = $2', [newSuspended, target.id])
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), newSuspended ? 'suspended_user' : 'unsuspended_user', target.email)
+  res.json({ id: target.id, email: target.email, addedBy: target.addedBy, suspended: newSuspended, createdAt: target.createdAt })
 })
 
 // ─── Users: delete ────────────────────────────────────────────────────────────
-app.delete('/api/users/:id', requireAuth, (req, res) => {
-  const users = loadUsers()
-  const user = users.find((u) => u.id === req.params.id)
-  if (!user) return res.status(404).json({ error: 'Not found' })
-  if (user.id === req.user.id) return res.status(403).json({ error: 'Cannot modify your own account' })
+app.delete('/api/users/:id', requireAuth, async (req, res) => {
+  const rows = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id])
+  const target = db.mapUser(rows[0])
+  if (!target) return res.status(404).json({ error: 'Not found' })
+  if (target.id === req.user.id) return res.status(403).json({ error: 'Cannot modify your own account' })
   const isAdmin = req.user.email === ADMIN_EMAIL
-  if (!isAdmin && user.addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
-  saveUsers(users.filter((u) => u.id !== req.params.id))
-  logActivity(req.user.id, req.user.email, displayNameById(req.user.id), 'removed_user', user.email)
+  if (!isAdmin && target.addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
+  await db.query('DELETE FROM users WHERE id = $1', [target.id])
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'removed_user', target.email)
   res.json({ ok: true })
 })
 
@@ -216,9 +176,8 @@ function parseUploader(filename) {
 app.get('/api/photos', async (req, res) => {
   if (!drive) return res.status(503).json({ error: 'Drive not configured' })
   try {
-    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID
     const { data } = await drive.files.list({
-      q: `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`,
+      q: `'${process.env.GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed = false`,
       fields: 'files(id, name)',
       orderBy: 'createdTime desc',
       includeItemsFromAllDrives: true,
@@ -253,7 +212,7 @@ app.delete('/api/photos/:id', requireAuth, async (req, res) => {
   if (!drive) return res.status(503).json({ error: 'Drive not configured' })
   try {
     await drive.files.delete({ fileId: req.params.id, supportsAllDrives: true })
-    logActivity(req.user.id, req.user.email, displayNameById(req.user.id), 'deleted_photo')
+    logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'deleted_photo')
     res.json({ ok: true })
   } catch (err) {
     console.error('Drive delete failed:', err.message)
@@ -266,27 +225,19 @@ app.post('/api/photos/upload', requireAuth, upload.array('photos', 20), async (r
   if (!drive) return res.status(503).json({ error: 'Drive not configured' })
   if (!req.files?.length) return res.status(400).json({ error: 'No files provided' })
   try {
-    const users = loadUsers()
-    const uploader = users.find((u) => u.id === req.user.id)
-    const displayName = uploader?.name || uploader?.email.split('@')[0] || 'unknown'
-
+    const uploaderRows = await db.query('SELECT name, email FROM users WHERE id = $1', [req.user.id])
+    const uploaderName = displayName(uploaderRows[0])
     const uploaded = await Promise.all(
       req.files.map((file) =>
         drive.files.create({
-          requestBody: {
-            name: `${displayName}__${file.originalname}`,
-            parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
-          },
-          media: {
-            mimeType: file.mimetype,
-            body: Readable.from(file.buffer),
-          },
+          requestBody: { name: `${uploaderName}__${file.originalname}`, parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] },
+          media: { mimeType: file.mimetype, body: Readable.from(file.buffer) },
           fields: 'id, name',
           supportsAllDrives: true,
         })
       )
     )
-    logActivity(req.user.id, req.user.email, displayName(uploader), 'uploaded_photos', String(req.files.length))
+    logActivity(req.user.id, req.user.email, uploaderName, 'uploaded_photos', String(req.files.length))
     res.json(uploaded.map((r) => r.data))
   } catch (err) {
     console.error('Drive upload failed:', err.message)
@@ -295,19 +246,24 @@ app.post('/api/photos/upload', requireAuth, upload.array('photos', 20), async (r
 })
 
 // ─── Activity log: fetch (admin only) ────────────────────────────────────────
-app.get('/api/activity', requireAuth, (req, res) => {
+app.get('/api/activity', requireAuth, async (req, res) => {
   if (req.user.email !== ADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' })
-  let entries = []
-  try { entries = JSON.parse(fs.readFileSync(ACTIVITY_FILE, 'utf8')) } catch {}
-  res.json(entries)
+  const rows = await db.query('SELECT * FROM activity ORDER BY timestamp DESC LIMIT 500')
+  res.json(rows.map((r) => ({
+    id: r.id,
+    timestamp: r.timestamp,
+    actorId: r.actor_id,
+    actorEmail: r.actor_email,
+    actorName: r.actor_name,
+    action: r.action,
+    detail: r.detail,
+  })))
 })
 
 // ─── Contact form ──────────────────────────────────────────────────────────────
 app.post('/api/contact', async (req, res) => {
   const { name, email, message } = req.body
-  if (!name || !email || !message) {
-    return res.status(400).json({ error: 'Missing fields' })
-  }
+  if (!name || !email || !message) return res.status(400).json({ error: 'Missing fields' })
   if (!resend) {
     console.warn('RESEND_API_KEY not set — email not sent')
     return res.json({ ok: true })
@@ -333,6 +289,9 @@ if (process.env.NODE_ENV === 'production') {
   app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')))
 }
 
-ensureUsers().then(() => {
+db.init().then(() => {
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
+}).catch((err) => {
+  console.error('Database init failed:', err)
+  process.exit(1)
 })
