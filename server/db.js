@@ -60,7 +60,7 @@ async function init() {
     )
   `)
 
-  const [{ count }] = await pool.query('SELECT COUNT(*) FROM users')
+  const [{ count }] = await query('SELECT COUNT(*) FROM users')
   if (parseInt(count) === 0) {
     const hash = await bcrypt.hash(INITIAL_PASSWORD, 10)
     for (const email of SEED_EMAILS) {
