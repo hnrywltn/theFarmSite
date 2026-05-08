@@ -43,6 +43,7 @@ async function ensureUsers() {
   const users = SEED_EMAILS.map((email) => ({
     id: crypto.randomUUID(),
     email,
+    name: null,
     passwordHash: hash,
     addedBy: null,
     suspended: false,
@@ -94,7 +95,7 @@ app.post('/api/auth/login', async (req, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash)
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' })
-  res.json({ token, user: { id: user.id, email: user.email } })
+  res.json({ token, user: { id: user.id, email: user.email, name: user.name || null } })
 })
 
 // ─── Auth: change password ─────────────────────────────────────────────────────
@@ -111,10 +112,22 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   res.json({ ok: true })
 })
 
+// ─── Users: me (update profile) ───────────────────────────────────────────────
+app.patch('/api/users/me', requireAuth, (req, res) => {
+  const { name } = req.body
+  if (typeof name !== 'string') return res.status(400).json({ error: 'Name required' })
+  const users = loadUsers()
+  const user = users.find((u) => u.id === req.user.id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  user.name = name.trim() || null
+  saveUsers(users)
+  res.json({ id: user.id, email: user.email, name: user.name })
+})
+
 // ─── Users: list ──────────────────────────────────────────────────────────────
 app.get('/api/users', requireAuth, (req, res) => {
   const users = loadUsers()
-  res.json(users.map(({ id, email, addedBy, suspended, createdAt }) => ({ id, email, addedBy, suspended, createdAt })))
+  res.json(users.map(({ id, email, name, addedBy, suspended, createdAt }) => ({ id, email, name, addedBy, suspended, createdAt })))
 })
 
 // ─── Users: add ───────────────────────────────────────────────────────────────
@@ -129,6 +142,7 @@ app.post('/api/users', requireAuth, async (req, res) => {
   const newUser = {
     id: crypto.randomUUID(),
     email: email.trim().toLowerCase(),
+    name: null,
     passwordHash: hash,
     addedBy: req.user.id,
     suspended: false,
@@ -165,6 +179,11 @@ app.delete('/api/users/:id', requireAuth, (req, res) => {
   res.json({ ok: true })
 })
 
+function parseUploader(filename) {
+  const sep = filename.indexOf('__')
+  return sep !== -1 ? filename.slice(0, sep) : null
+}
+
 // ─── Photos: list ─────────────────────────────────────────────────────────────
 app.get('/api/photos', async (req, res) => {
   if (!drive) return res.status(503).json({ error: 'Drive not configured' })
@@ -177,7 +196,7 @@ app.get('/api/photos', async (req, res) => {
       includeItemsFromAllDrives: true,
       supportsAllDrives: true,
     })
-    res.json(data.files)
+    res.json(data.files.map((f) => ({ id: f.id, name: f.name, uploader: parseUploader(f.name) })))
   } catch (err) {
     console.error('Drive list failed:', err.message)
     res.status(500).json({ error: 'Failed to list photos' })
@@ -218,11 +237,15 @@ app.post('/api/photos/upload', requireAuth, upload.array('photos', 20), async (r
   if (!drive) return res.status(503).json({ error: 'Drive not configured' })
   if (!req.files?.length) return res.status(400).json({ error: 'No files provided' })
   try {
+    const users = loadUsers()
+    const uploader = users.find((u) => u.id === req.user.id)
+    const displayName = uploader?.name || uploader?.email.split('@')[0] || 'unknown'
+
     const uploaded = await Promise.all(
       req.files.map((file) =>
         drive.files.create({
           requestBody: {
-            name: file.originalname,
+            name: `${displayName}__${file.originalname}`,
             parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
           },
           media: {

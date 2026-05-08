@@ -3,64 +3,108 @@ import Nav from '../components/Nav'
 import Footer from '../components/Footer'
 import { useAuth } from '../context/AuthContext'
 
-function ChangePassword({ token }) {
+function AccountSettings({ token, currentName, updateProfile }) {
+  const [name, setName] = useState(currentName || '')
+  const [nameSaving, setNameSaving] = useState(false)
+  const [nameSuccess, setNameSuccess] = useState(false)
+
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [pwSuccess, setPwSuccess] = useState(false)
+  const [pwLoading, setPwLoading] = useState(false)
 
-  async function handleSubmit(e) {
+  async function handleNameSave(e) {
     e.preventDefault()
-    if (next !== confirm) { setError('New passwords do not match'); return }
-    if (next.length < 6) { setError('Password must be at least 6 characters'); return }
-    setLoading(true)
-    setError('')
+    setNameSaving(true)
+    setNameSuccess(false)
+    const res = await fetch('/api/users/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json()
+    setNameSaving(false)
+    if (res.ok) {
+      updateProfile({ name: data.name })
+      setNameSuccess(true)
+    }
+  }
+
+  async function handlePasswordSubmit(e) {
+    e.preventDefault()
+    if (next !== confirm) { setPwError('New passwords do not match'); return }
+    if (next.length < 6) { setPwError('Password must be at least 6 characters'); return }
+    setPwLoading(true)
+    setPwError('')
     const res = await fetch('/api/auth/change-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ currentPassword: current, newPassword: next }),
     })
     const data = await res.json()
-    setLoading(false)
+    setPwLoading(false)
     if (res.ok) {
-      setSuccess(true)
+      setPwSuccess(true)
       setCurrent(''); setNext(''); setConfirm('')
     } else {
-      setError(data.error)
+      setPwError(data.error)
     }
   }
 
   return (
-    <div className="border border-farm-cream/10 p-6">
-      <h2 className="font-serif text-xl text-farm-cream mb-6">Change Password</h2>
-      {success && <p className="text-green-400 text-sm mb-4">Password updated.</p>}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        {[
-          { value: current, set: setCurrent, placeholder: 'Current password' },
-          { value: next, set: setNext, placeholder: 'New password' },
-          { value: confirm, set: setConfirm, placeholder: 'Confirm new password' },
-        ].map(({ value, set, placeholder }) => (
+    <div className="border border-farm-cream/10 p-6 flex flex-col gap-8">
+      <div>
+        <h2 className="font-serif text-xl text-farm-cream mb-5">Display Name</h2>
+        <form onSubmit={handleNameSave} className="flex gap-3">
           <input
-            key={placeholder}
-            type="password"
-            value={value}
-            onChange={(e) => { set(e.target.value); setError(''); setSuccess(false) }}
-            placeholder={placeholder}
-            required
-            className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-3 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+            type="text"
+            value={name}
+            onChange={(e) => { setName(e.target.value); setNameSuccess(false) }}
+            placeholder="Your name"
+            className="flex-1 bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-3 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
           />
-        ))}
-        {error && <p className="text-red-400 text-xs">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="label-sm text-farm-gold border border-farm-gold/40 px-6 py-3 hover:bg-farm-gold/10 transition-colors disabled:opacity-40 self-start mt-1"
-        >
-          {loading ? 'Saving…' : 'Update Password'}
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={nameSaving}
+            className="label-sm text-farm-gold border border-farm-gold/40 px-5 py-3 hover:bg-farm-gold/10 transition-colors disabled:opacity-40 whitespace-nowrap"
+          >
+            {nameSaving ? 'Saving…' : nameSuccess ? 'Saved' : 'Save'}
+          </button>
+        </form>
+        <p className="text-farm-cream/30 text-xs mt-2">Used to label photos you upload.</p>
+      </div>
+
+      <div className="border-t border-farm-cream/10 pt-6">
+        <h2 className="font-serif text-xl text-farm-cream mb-5">Change Password</h2>
+        {pwSuccess && <p className="text-green-400 text-sm mb-4">Password updated.</p>}
+        <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
+          {[
+            { value: current, set: setCurrent, placeholder: 'Current password' },
+            { value: next, set: setNext, placeholder: 'New password' },
+            { value: confirm, set: setConfirm, placeholder: 'Confirm new password' },
+          ].map(({ value, set, placeholder }) => (
+            <input
+              key={placeholder}
+              type="password"
+              value={value}
+              onChange={(e) => { set(e.target.value); setPwError(''); setPwSuccess(false) }}
+              placeholder={placeholder}
+              required
+              className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-3 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+            />
+          ))}
+          {pwError && <p className="text-red-400 text-xs">{pwError}</p>}
+          <button
+            type="submit"
+            disabled={pwLoading}
+            className="label-sm text-farm-gold border border-farm-gold/40 px-6 py-3 hover:bg-farm-gold/10 transition-colors disabled:opacity-40 self-start mt-1"
+          >
+            {pwLoading ? 'Saving…' : 'Update Password'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }
@@ -250,7 +294,7 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
 }
 
 export default function AdminPage() {
-  const { token, user } = useAuth()
+  const { token, user, updateProfile } = useAuth()
 
   return (
     <div className="font-sans bg-farm-dark min-h-screen flex flex-col">
@@ -278,7 +322,7 @@ export default function AdminPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            <ChangePassword token={token} />
+            <AccountSettings token={token} currentName={user?.name} updateProfile={updateProfile} />
             <UserManagement token={token} currentUserId={user?.id} currentUserEmail={user?.email} />
           </div>
         </div>

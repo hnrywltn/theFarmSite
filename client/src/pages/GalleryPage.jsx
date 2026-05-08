@@ -104,6 +104,12 @@ export default function GalleryPage() {
                   />
                 </button>
 
+                {photo.uploader && (
+                  <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1.5 bg-gradient-to-t from-farm-dark/75 to-transparent pointer-events-none">
+                    <span className="text-farm-cream/70 text-xs">{photo.uploader}</span>
+                  </div>
+                )}
+
                 {/* Delete button — appears on hover, admin only */}
                 {isLoggedIn && (
                   <button
@@ -131,12 +137,16 @@ export default function GalleryPage() {
           className="fixed inset-0 z-50 bg-farm-dark/95 flex items-center justify-center p-4"
           onClick={() => setSelected(null)}
         >
-          <img
-            src={`/api/photos/${selected.id}`}
-            alt={selected.name}
-            className="max-h-[90vh] max-w-[90vw] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={`/api/photos/${selected.id}`}
+              alt={selected.name}
+              className="max-h-[85vh] max-w-[90vw] object-contain"
+            />
+            {selected.uploader && (
+              <p className="text-farm-cream/40 text-xs tracking-wide">{selected.uploader}</p>
+            )}
+          </div>
           <div className="absolute top-6 right-6 flex gap-3">
             {isLoggedIn && (
               <button

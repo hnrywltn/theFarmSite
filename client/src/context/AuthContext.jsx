@@ -35,8 +35,16 @@ export function AuthProvider({ children }) {
     setAuth({ token: null, user: null })
   }, [])
 
+  const updateProfile = useCallback((updates) => {
+    setAuth((prev) => {
+      const newUser = { ...prev.user, ...updates }
+      sessionStorage.setItem('user', JSON.stringify(newUser))
+      return { ...prev, user: newUser }
+    })
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ isLoggedIn: !!token, token, user, login, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn: !!token, token, user, login, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )
