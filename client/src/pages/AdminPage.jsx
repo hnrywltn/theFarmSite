@@ -67,6 +67,7 @@ function ChangePassword({ token }) {
 
 const INITIAL_PASSWORD = 'farmPassword2026'
 const SITE_URL = 'https://nanaandpapas.com'
+const ADMIN_EMAIL = 'hnrywltn@gmail.com'
 
 function InviteModal({ email, onClose }) {
   const [copied, setCopied] = useState(false)
@@ -125,7 +126,7 @@ function Row({ label, value }) {
   )
 }
 
-function UserManagement({ token, currentUserId }) {
+function UserManagement({ token, currentUserId, currentUserEmail }) {
   const [users, setUsers] = useState([])
   const [newEmail, setNewEmail] = useState('')
   const [adding, setAdding] = useState(false)
@@ -209,7 +210,8 @@ function UserManagement({ token, currentUserId }) {
 
       <div className="divide-y divide-farm-cream/10 mt-6">
         {users.map((u) => {
-          const canManage = u.addedBy === currentUserId
+          const isAdmin = currentUserEmail === ADMIN_EMAIL
+          const canManage = u.id !== currentUserId && (isAdmin || u.addedBy === currentUserId)
           return (
             <div key={u.id} className="flex items-center justify-between py-3 gap-4">
               <div className="flex items-center gap-3 min-w-0">
@@ -277,7 +279,7 @@ export default function AdminPage() {
 
           <div className="grid md:grid-cols-2 gap-6">
             <ChangePassword token={token} />
-            <UserManagement token={token} currentUserId={user?.id} />
+            <UserManagement token={token} currentUserId={user?.id} currentUserEmail={user?.email} />
           </div>
         </div>
       </main>

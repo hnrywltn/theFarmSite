@@ -17,6 +17,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 const JWT_SECRET = process.env.JWT_SECRET || 'farm-dev-secret-change-in-prod'
 const USERS_FILE = path.join(__dirname, 'users.json')
 const INITIAL_PASSWORD = 'farmPassword2026'
+const ADMIN_EMAIL = 'hnrywltn@gmail.com'
 const SEED_EMAILS = [
   'hnrywltn@gmail.com',
   'bshackelford11@gmail.com',
@@ -143,7 +144,9 @@ app.patch('/api/users/:id', requireAuth, (req, res) => {
   const users = loadUsers()
   const idx = users.findIndex((u) => u.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
-  if (users[idx].addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
+  if (users[idx].id === req.user.id) return res.status(403).json({ error: 'Cannot modify your own account' })
+  const isAdmin = req.user.email === ADMIN_EMAIL
+  if (!isAdmin && users[idx].addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
   users[idx].suspended = req.body.suspended ?? !users[idx].suspended
   saveUsers(users)
   const { id, email, addedBy, suspended, createdAt } = users[idx]
@@ -155,7 +158,9 @@ app.delete('/api/users/:id', requireAuth, (req, res) => {
   const users = loadUsers()
   const user = users.find((u) => u.id === req.params.id)
   if (!user) return res.status(404).json({ error: 'Not found' })
-  if (user.addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
+  if (user.id === req.user.id) return res.status(403).json({ error: 'Cannot modify your own account' })
+  const isAdmin = req.user.email === ADMIN_EMAIL
+  if (!isAdmin && user.addedBy !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
   saveUsers(users.filter((u) => u.id !== req.params.id))
   res.json({ ok: true })
 })
