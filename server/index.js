@@ -59,31 +59,25 @@ if (process.env.RESEND_API_KEY) resend = new Resend(process.env.RESEND_API_KEY)
 
 // ─── Google Drive auth ─────────────────────────────────────────────────────────
 let drive = null
-if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
-  try {
-    const { createPrivateKey } = require('crypto')
-    console.log('Node:', process.version, '| OpenSSL:', process.versions.openssl)
-
-    // Decode base64 → PEM string
-    const pem = Buffer.from(process.env.GOOGLE_PRIVATE_KEY, 'base64').toString('utf8')
-
-    // Strip PEM armor → raw base64 body → DER bytes, bypassing PEM decoder
-    const derB64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')
-    const der = Buffer.from(derB64, 'base64')
-    console.log('DER length:', der.length)
-
-    const keyObj = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' })
-    const privatePem = keyObj.export({ type: 'pkcs8', format: 'pem' }).toString()
-    console.log('Key import: OK via DER')
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: { client_email: process.env.GOOGLE_CLIENT_EMAIL, private_key: privatePem },
-      scopes: ['https://www.googleapis.com/auth/drive'],
-    })
-    drive = google.drive({ version: 'v3', auth })
-  } catch (err) {
-    console.error('Drive init failed:', err.message)
+try {
+  let credentials = null
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64) {
+    credentials = JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64, 'base64').toString('utf8'))
+    console.log('Drive: using full service account JSON')
+  } else if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+    credentials = {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: Buffer.from(process.env.GOOGLE_PRIVATE_KEY, 'base64').toString('utf8'),
+    }
+    console.log('Drive: using client_email + private_key')
   }
+  if (credentials) {
+    const auth = new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/drive'] })
+    drive = google.drive({ version: 'v3', auth })
+    console.log('Drive: initialized')
+  }
+} catch (err) {
+  console.error('Drive init failed:', err.message)
 }
 
 app.use(cors())
