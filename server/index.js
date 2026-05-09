@@ -63,13 +63,21 @@ if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
   try {
     const { createPrivateKey } = require('crypto')
     console.log('Node:', process.version, '| OpenSSL:', process.versions.openssl)
-    const decodedKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY, 'base64').toString('utf8')
-    console.log('Key head:', JSON.stringify(decodedKey.slice(0, 40)))
-    console.log('Key tail:', JSON.stringify(decodedKey.slice(-40)))
-    createPrivateKey(decodedKey)
-    console.log('Key import: OK')
+
+    // Decode base64 → PEM string
+    const pem = Buffer.from(process.env.GOOGLE_PRIVATE_KEY, 'base64').toString('utf8')
+
+    // Strip PEM armor → raw base64 body → DER bytes, bypassing PEM decoder
+    const derB64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')
+    const der = Buffer.from(derB64, 'base64')
+    console.log('DER length:', der.length)
+
+    const keyObj = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' })
+    const privatePem = keyObj.export({ type: 'pkcs8', format: 'pem' }).toString()
+    console.log('Key import: OK via DER')
+
     const auth = new google.auth.GoogleAuth({
-      credentials: { client_email: process.env.GOOGLE_CLIENT_EMAIL, private_key: decodedKey },
+      credentials: { client_email: process.env.GOOGLE_CLIENT_EMAIL, private_key: privatePem },
       scopes: ['https://www.googleapis.com/auth/drive'],
     })
     drive = google.drive({ version: 'v3', auth })
