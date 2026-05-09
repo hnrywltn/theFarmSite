@@ -62,6 +62,7 @@ let drive = null
 if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
   try {
     const { createPrivateKey } = require('crypto')
+    console.log('Node:', process.version, '| OpenSSL:', process.versions.openssl)
     const decodedKey = Buffer.from(process.env.GOOGLE_PRIVATE_KEY, 'base64').toString('utf8')
     console.log('Key head:', JSON.stringify(decodedKey.slice(0, 40)))
     console.log('Key tail:', JSON.stringify(decodedKey.slice(-40)))
