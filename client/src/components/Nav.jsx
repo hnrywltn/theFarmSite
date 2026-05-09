@@ -66,7 +66,7 @@ export default function Nav() {
 
           {/* Mobile hamburger */}
           <button
-            className="md:hidden text-farm-cream/70 hover:text-farm-cream"
+            className="md:hidden text-farm-cream/70 hover:text-farm-cream p-2 -mr-2"
             onClick={() => setMenuOpen((o) => !o)}
             aria-label="Toggle menu"
           >

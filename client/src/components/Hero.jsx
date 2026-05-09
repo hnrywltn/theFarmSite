@@ -47,7 +47,7 @@ export default function Hero() {
       )}
 
       {/* Hero text with solid background */}
-      <div className="relative z-10 text-center px-12 py-14 bg-farm-dark animate-fade-in">
+      <div className="relative z-10 text-center px-6 sm:px-12 py-14 bg-farm-dark animate-fade-in">
         <p className="label-sm text-farm-gold tracking-[0.4em] mb-6">Buck Creek · Kentucky</p>
 
         <h1 className="font-serif text-5xl md:text-7xl lg:text-8xl text-farm-cream font-light leading-tight">
@@ -60,7 +60,7 @@ export default function Hero() {
           Three hundred acres of Appalachian Kentucky, built by hand and filled with memory.
         </p>
 
-        <div className="mt-12 flex items-center justify-center gap-6">
+        <div className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
           <a
             href="#about"
             className="label-sm text-farm-gold border border-farm-gold/40 px-8 py-3 hover:bg-farm-gold/10 transition-colors"

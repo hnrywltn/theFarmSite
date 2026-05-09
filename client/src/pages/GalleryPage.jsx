@@ -61,7 +61,7 @@ export default function GalleryPage() {
 
       <main className="flex-1 section-pad pt-32">
         <div className="max-w-6xl mx-auto">
-          <div className="flex items-end justify-between mb-12">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-12">
             <div>
               <p className="label-sm text-farm-gold mb-6">The Farm</p>
               <h1 className="font-serif text-4xl md:text-5xl text-farm-cream font-light">
@@ -69,7 +69,7 @@ export default function GalleryPage() {
               </h1>
             </div>
             {isLoggedIn && (
-              <div>
+              <div className="shrink-0">
                 <input
                   ref={fileInputRef}
                   type="file"

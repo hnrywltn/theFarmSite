@@ -257,7 +257,7 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
           const isAdmin = currentUserEmail === ADMIN_EMAIL
           const canManage = u.id !== currentUserId && (isAdmin || u.addedBy === currentUserId)
           return (
-            <div key={u.id} className="flex items-center justify-between py-3 gap-4">
+            <div key={u.id} className="flex flex-wrap items-center justify-between py-3 gap-x-4 gap-y-2">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="text-farm-cream/80 text-sm truncate">{u.email}</span>
                 {u.suspended && (
@@ -339,14 +339,14 @@ function ActivityLog({ token }) {
       ) : (
         <div className="divide-y divide-farm-cream/10 max-h-96 overflow-y-auto">
           {entries.map((e) => (
-            <div key={e.id} className="flex items-baseline justify-between gap-4 py-2.5">
-              <p className="text-sm text-farm-cream/70">
+            <div key={e.id} className="flex items-start justify-between gap-4 py-2.5">
+              <p className="text-sm text-farm-cream/70 min-w-0">
                 <span className="text-farm-cream font-medium">{e.actorName}</span>
                 {' '}
                 <span>{actionLabel(e.action, e.detail)}</span>
               </p>
               <span
-                className="text-farm-cream/30 text-xs shrink-0"
+                className="text-farm-cream/30 text-xs shrink-0 pt-0.5"
                 title={new Date(e.timestamp).toLocaleString()}
               >
                 {relativeTime(e.timestamp)}
