@@ -54,7 +54,7 @@ function AccountSettings({ token, currentName, updateProfile }) {
   }
 
   return (
-    <div className="border border-farm-cream/10 p-6 flex flex-col gap-8">
+    <div className="bg-farm-dark border border-farm-cream/10 p-6 flex flex-col gap-8">
       <div>
         <h2 className="font-serif text-xl text-farm-cream mb-5">Display Name</h2>
         <form onSubmit={handleNameSave} className="flex gap-3">
@@ -231,7 +231,7 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
   return (
     <>
     {inviteEmail && <InviteModal email={inviteEmail} onClose={() => setInviteEmail(null)} />}
-    <div className="border border-farm-cream/10 p-6">
+    <div className="bg-farm-dark border border-farm-cream/10 p-6">
       <h2 className="font-serif text-xl text-farm-cream mb-6">Users</h2>
 
       <form onSubmit={handleAdd} className="flex gap-3 mb-2">
@@ -364,7 +364,7 @@ export default function AdminPage() {
   const isAdmin = user?.email === ADMIN_EMAIL
 
   return (
-    <div className="font-sans bg-farm-dark min-h-screen flex flex-col">
+    <div className="font-sans min-h-screen flex flex-col bg-[url('/farm-bg.jpg')] bg-cover bg-center bg-fixed">
       <Nav />
 
       <main className="flex-1 section-pad pt-32">
@@ -381,7 +381,7 @@ export default function AdminPage() {
               { title: 'Work Log', desc: "What's been done, what's pending, who handled it." },
               { title: 'Updates', desc: 'Shared family notes so no one is out of the loop.' },
             ].map((s) => (
-              <div key={s.title} className="border border-farm-cream/10 p-6">
+              <div key={s.title} className="bg-farm-dark border border-farm-cream/10 p-6">
                 <h2 className="font-serif text-xl text-farm-cream mb-2">{s.title}</h2>
                 <p className="font-sans font-light text-farm-cream/40 text-sm">{s.desc}</p>
               </div>
