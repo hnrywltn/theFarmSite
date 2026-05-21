@@ -194,7 +194,16 @@ app.get('/api/photos', async (req, res) => {
       includeItemsFromAllDrives: true,
       supportsAllDrives: true,
     })
-    res.json(data.files.map((f) => ({ id: f.id, name: f.name, uploader: parseUploader(f.name) })))
+    let files = data.files.map((f) => ({ id: f.id, name: f.name, uploader: parseUploader(f.name) }))
+    const limit = parseInt(req.query.limit, 10)
+    if (limit > 0 && limit < files.length) {
+      for (let i = files.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[files[i], files[j]] = [files[j], files[i]]
+      }
+      files = files.slice(0, limit)
+    }
+    res.json(files)
   } catch (err) {
     console.error('Drive list failed:', err.message)
     res.status(500).json({ error: 'Failed to list photos' })

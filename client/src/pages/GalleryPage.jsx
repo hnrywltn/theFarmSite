@@ -6,9 +6,12 @@ import { useAuth } from '../context/AuthContext'
 export default function GalleryPage() {
   const { isLoggedIn, token } = useAuth()
   const [photos, setPhotos] = useState([])
+  const [visible, setVisible] = useState(20)
   const [selected, setSelected] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(null)
+
+  const PAGE_SIZE = 20
   const fileInputRef = useRef(null)
 
   function loadPhotos() {
@@ -90,7 +93,7 @@ export default function GalleryPage() {
           </div>
 
           <div className="columns-2 md:columns-3 gap-3 space-y-3">
-            {photos.map((photo) => (
+            {photos.slice(0, visible).map((photo) => (
               <div key={photo.id} className="relative group block">
                 <button
                   onClick={() => setSelected(photo)}
@@ -126,6 +129,17 @@ export default function GalleryPage() {
               </div>
             ))}
           </div>
+
+          {visible < photos.length && (
+            <div className="mt-12 flex justify-center">
+              <button
+                onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                className="label-sm text-farm-gold border border-farm-gold/40 px-8 py-3 hover:bg-farm-gold/10 transition-colors"
+              >
+                Load More
+              </button>
+            </div>
+          )}
         </div>
       </main>
 

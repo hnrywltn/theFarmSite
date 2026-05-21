@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 
-function CollageStrip({ photos, className }) {
+function CollageStrip({ photos, className, pxPerSec }) {
   const doubled = [...photos, ...photos]
+  // w-72 (288px) + gap-3 (12px) = 300px per card; 50% of doubled strip = 1× the original set
+  const duration = (photos.length * 300) / pxPerSec
   return (
     <div className="overflow-hidden w-full">
-      <div className={`flex gap-3 w-max ${className}`}>
+      <div className={`flex gap-3 w-max ${className}`} style={{ animationDuration: `${duration}s` }}>
         {doubled.map((photo, i) => (
           <div key={`${photo.id}-${i}`} className="h-48 w-72 flex-shrink-0 overflow-hidden">
             <img
@@ -24,7 +26,7 @@ export default function Hero() {
   const [photos, setPhotos] = useState([])
 
   useEffect(() => {
-    fetch('/api/photos')
+    fetch('/api/photos?limit=20')
       .then((r) => r.json())
       .then((data) => Array.isArray(data) && setPhotos(data))
       .catch(() => {})
@@ -40,9 +42,9 @@ export default function Hero() {
       {/* Collage background */}
       {photos.length > 0 && (
         <div className="absolute inset-0 flex flex-col justify-center gap-3 opacity-40 pointer-events-none select-none">
-          {row1.length > 0 && <CollageStrip photos={row1} className="collage-left" />}
-          {row2.length > 0 && <CollageStrip photos={row2} className="collage-right" />}
-          {row3.length > 0 && <CollageStrip photos={row3} className="collage-left-slow" />}
+          {row1.length > 0 && <CollageStrip photos={row1} className="collage-left" pxPerSec={28} />}
+          {row2.length > 0 && <CollageStrip photos={row2} className="collage-right" pxPerSec={22} />}
+          {row3.length > 0 && <CollageStrip photos={row3} className="collage-left-slow" pxPerSec={16} />}
         </div>
       )}
 
