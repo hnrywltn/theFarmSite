@@ -61,6 +61,15 @@ async function init() {
     )
   `)
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS guestbook (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
+
   const [{ count }] = await query('SELECT COUNT(*) FROM users')
   if (parseInt(count) === 0) {
     const hash = await bcrypt.hash(INITIAL_PASSWORD, 10)

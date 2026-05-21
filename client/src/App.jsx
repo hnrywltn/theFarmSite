@@ -2,6 +2,7 @@ import Nav from './components/Nav'
 import Hero from './components/Hero'
 import About from './components/About'
 import TheLand from './components/TheLand'
+import Guestbook from './components/Guestbook'
 // import Contact from './components/Contact'
 import Footer from './components/Footer'
 import Divider from './components/Divider'
@@ -15,6 +16,8 @@ export default function App() {
       <About />
       <Divider />
       <TheLand />
+      <Divider />
+      <Guestbook />
       {/* <Divider />
       <Contact /> */}
       <Footer />

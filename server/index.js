@@ -280,6 +280,45 @@ app.get('/api/activity', requireAuth, async (req, res) => {
   })))
 })
 
+// ─── Guestbook ────────────────────────────────────────────────────────────────
+app.get('/api/guestbook', async (req, res) => {
+  try {
+    const rows = await db.query('SELECT id, name, message, created_at FROM guestbook ORDER BY created_at DESC')
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, message: r.message, createdAt: r.created_at })))
+  } catch (err) {
+    console.error('Guestbook fetch failed:', err.message)
+    res.status(500).json({ error: 'Failed to fetch entries' })
+  }
+})
+
+app.post('/api/guestbook', async (req, res) => {
+  const { name, message } = req.body
+  if (!name?.trim() || !message?.trim()) return res.status(400).json({ error: 'Name and message required' })
+  if (message.trim().length > 500) return res.status(400).json({ error: 'Message too long' })
+  try {
+    const id = randomUUID()
+    await db.query(
+      'INSERT INTO guestbook (id, name, message) VALUES ($1, $2, $3)',
+      [id, name.trim(), message.trim()]
+    )
+    const row = (await db.query('SELECT id, name, message, created_at FROM guestbook WHERE id = $1', [id]))[0]
+    res.json({ id: row.id, name: row.name, message: row.message, createdAt: row.created_at })
+  } catch (err) {
+    console.error('Guestbook post failed:', err.message)
+    res.status(500).json({ error: 'Failed to save entry' })
+  }
+})
+
+app.delete('/api/guestbook/:id', requireAuth, async (req, res) => {
+  try {
+    await db.query('DELETE FROM guestbook WHERE id = $1', [req.params.id])
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('Guestbook delete failed:', err.message)
+    res.status(500).json({ error: 'Failed to delete entry' })
+  }
+})
+
 // ─── Contact form ──────────────────────────────────────────────────────────────
 app.post('/api/contact', async (req, res) => {
   const { name, email, message } = req.body
