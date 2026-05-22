@@ -10,6 +10,16 @@ export default function GalleryPage() {
   const [selected, setSelected] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(null)
+  const [numCols, setNumCols] = useState(() =>
+    window.matchMedia('(min-width: 768px)').matches ? 3 : 2
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const update = () => setNumCols(mq.matches ? 3 : 2)
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
 
   const PAGE_SIZE = 20
   const fileInputRef = useRef(null)
@@ -92,40 +102,43 @@ export default function GalleryPage() {
             )}
           </div>
 
-          <div className="columns-2 md:columns-3 gap-3 space-y-3">
-            {photos.slice(0, visible).map((photo) => (
-              <div key={photo.id} className="relative group block">
-                <button
-                  onClick={() => setSelected(photo)}
-                  className="w-full overflow-hidden block"
-                >
-                  <img
-                    src={`/api/photos/${photo.id}`}
-                    alt={photo.name}
-                    className="w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    loading="lazy"
-                  />
-                </button>
+          <div className="flex gap-3">
+            {Array.from({ length: numCols }, (_, colIdx) => (
+              <div key={colIdx} className="flex flex-col gap-3 flex-1">
+                {photos.slice(0, visible).filter((_, i) => i % numCols === colIdx).map((photo) => (
+                  <div key={photo.id} className="relative group block">
+                    <button
+                      onClick={() => setSelected(photo)}
+                      className="w-full overflow-hidden block"
+                    >
+                      <img
+                        src={`/api/photos/${photo.id}`}
+                        alt={photo.name}
+                        className="w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    </button>
 
-                {photo.uploader && (
-                  <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1.5 bg-gradient-to-t from-farm-dark/75 to-transparent pointer-events-none">
-                    <span className="text-farm-cream/70 text-xs">{photo.uploader}</span>
+                    {photo.uploader && (
+                      <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1.5 bg-gradient-to-t from-farm-dark/75 to-transparent pointer-events-none">
+                        <span className="text-farm-cream/70 text-xs">{photo.uploader}</span>
+                      </div>
+                    )}
+
+                    {isLoggedIn && (
+                      <button
+                        onClick={(e) => handleDelete(photo, e)}
+                        disabled={deleting === photo.id}
+                        className="absolute top-2 right-2 p-1.5 bg-farm-dark/70 text-farm-cream/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-30"
+                        title="Delete photo"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
-                )}
-
-                {/* Delete button — appears on hover, admin only */}
-                {isLoggedIn && (
-                  <button
-                    onClick={(e) => handleDelete(photo, e)}
-                    disabled={deleting === photo.id}
-                    className="absolute top-2 right-2 p-1.5 bg-farm-dark/70 text-farm-cream/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-30"
-                    title="Delete photo"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                    </svg>
-                  </button>
-                )}
+                ))}
               </div>
             ))}
           </div>
