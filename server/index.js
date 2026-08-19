@@ -311,7 +311,7 @@ const POLL_VISIBILITIES = ['immediate', 'after_vote', 'after_close']
 app.get('/api/polls', requireAuth, requireOwner, async (req, res) => {
   const polls = await db.query('SELECT * FROM polls ORDER BY created_at DESC')
   const voteRows = await db.query(
-    `SELECT pv.poll_id, pv.user_id, pv.option_index, pv.note, pv.voted_at, u.name, u.email
+    `SELECT pv.poll_id, pv.user_id, pv.option_index, pv.note, pv.pledge_amount, pv.voted_at, u.name, u.email
      FROM poll_votes pv JOIN users u ON u.id = pv.user_id`
   )
   const [{ count: ownerCount }] = await db.query('SELECT COUNT(*) FROM users WHERE is_owner = TRUE')
@@ -339,12 +339,24 @@ app.get('/api/polls', requireAuth, requireOwner, async (req, res) => {
       createdByName: creatorMap[p.created_by] || 'unknown',
       createdAt: p.created_at,
       closedAt: p.closed_at,
-      myVote: myVote ? { optionIndex: myVote.option_index, note: myVote.note } : null,
+      myVote: myVote
+        ? { optionIndex: myVote.option_index, note: myVote.note, pledgeAmount: myVote.pledge_amount !== null ? Number(myVote.pledge_amount) : null }
+        : null,
       totalVotes: pollVotes.length,
       totalOwners: parseInt(ownerCount, 10),
       resultsVisible,
+      totalPledged: resultsVisible
+        ? pollVotes.reduce((sum, v) => sum + (v.pledge_amount !== null ? Number(v.pledge_amount) : 0), 0)
+        : 0,
       votes: resultsVisible
-        ? pollVotes.map((v) => ({ userId: v.user_id, name: displayName(v), optionIndex: v.option_index, note: v.note, votedAt: v.voted_at }))
+        ? pollVotes.map((v) => ({
+            userId: v.user_id,
+            name: displayName(v),
+            optionIndex: v.option_index,
+            note: v.note,
+            pledgeAmount: v.pledge_amount !== null ? Number(v.pledge_amount) : null,
+            votedAt: v.voted_at,
+          }))
         : [],
     }
   }))
@@ -370,15 +382,20 @@ app.post('/api/polls/:id/vote', requireAuth, requireOwner, async (req, res) => {
   const poll = rows[0]
   if (!poll) return res.status(404).json({ error: 'Not found' })
   if (poll.status === 'closed') return res.status(403).json({ error: 'Poll is closed' })
-  const { optionIndex, note } = req.body
+  const { optionIndex, note, pledgeAmount } = req.body
   if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= poll.options.length) {
     return res.status(400).json({ error: 'Invalid option' })
   }
+  let pledge = null
+  if (pledgeAmount !== undefined && pledgeAmount !== null && pledgeAmount !== '') {
+    pledge = Number(pledgeAmount)
+    if (!Number.isFinite(pledge) || pledge < 0) return res.status(400).json({ error: 'Invalid pledge amount' })
+  }
   await db.query(
-    `INSERT INTO poll_votes (id, poll_id, user_id, option_index, note)
-     VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (poll_id, user_id) DO UPDATE SET option_index = $4, note = $5, voted_at = NOW()`,
-    [randomUUID(), poll.id, req.user.id, optionIndex, note?.trim() || null]
+    `INSERT INTO poll_votes (id, poll_id, user_id, option_index, note, pledge_amount)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (poll_id, user_id) DO UPDATE SET option_index = $4, note = $5, pledge_amount = $6, voted_at = NOW()`,
+    [randomUUID(), poll.id, req.user.id, optionIndex, note?.trim() || null, pledge]
   )
   logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'voted_poll', poll.title)
   res.json({ ok: true })

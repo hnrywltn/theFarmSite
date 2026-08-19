@@ -74,10 +74,12 @@ async function init() {
       user_id TEXT NOT NULL,
       option_index INT NOT NULL,
       note TEXT,
+      pledge_amount NUMERIC(10,2),
       voted_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(poll_id, user_id)
     )
   `)
+  await pool.query('ALTER TABLE poll_votes ADD COLUMN IF NOT EXISTS pledge_amount NUMERIC(10,2)')
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS activity (

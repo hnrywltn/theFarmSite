@@ -403,6 +403,10 @@ function visibilityLabel(v) {
   return VISIBILITY_OPTIONS.find((o) => o.value === v)?.label || v
 }
 
+function formatMoney(n) {
+  return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+}
+
 function NewPollForm({ token, onCreated, onCancel }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -520,6 +524,7 @@ function NewPollForm({ token, onCreated, onCancel }) {
 function PollCard({ poll, token, currentUserId, isAdmin, onChanged }) {
   const [selected, setSelected] = useState(poll.myVote?.optionIndex ?? null)
   const [note, setNote] = useState(poll.myVote?.note || '')
+  const [pledge, setPledge] = useState(poll.myVote?.pledgeAmount != null ? String(poll.myVote.pledgeAmount) : '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showVoters, setShowVoters] = useState(false)
@@ -527,12 +532,13 @@ function PollCard({ poll, token, currentUserId, isAdmin, onChanged }) {
   async function handleVote(e) {
     e.preventDefault()
     if (selected === null) { setError('Choose an option'); return }
+    if (pledge && (isNaN(Number(pledge)) || Number(pledge) < 0)) { setError('Enter a valid pledge amount'); return }
     setSaving(true)
     setError('')
     const res = await fetch(`/api/polls/${poll.id}/vote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ optionIndex: selected, note }),
+      body: JSON.stringify({ optionIndex: selected, note, pledgeAmount: pledge ? Number(pledge) : null }),
     })
     const data = await res.json()
     setSaving(false)
@@ -598,6 +604,18 @@ function PollCard({ poll, token, currentUserId, isAdmin, onChanged }) {
             rows={2}
             className="bg-transparent border border-farm-cream/20 text-farm-cream px-3 py-2 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
           />
+          <div className="flex items-center gap-2">
+            <span className="text-farm-cream/40 text-sm">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={pledge}
+              onChange={(e) => setPledge(e.target.value)}
+              placeholder="Willing to contribute (optional)"
+              className="flex-1 bg-transparent border border-farm-cream/20 text-farm-cream px-3 py-2 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+            />
+          </div>
           {error && <p className="text-red-400 text-xs">{error}</p>}
           <button
             type="submit"
@@ -607,6 +625,12 @@ function PollCard({ poll, token, currentUserId, isAdmin, onChanged }) {
             {saving ? 'Saving…' : poll.myVote ? 'Update Vote' : 'Cast Vote'}
           </button>
         </form>
+      )}
+
+      {poll.resultsVisible && poll.totalPledged > 0 && (
+        <p className="text-farm-cream/50 text-sm">
+          <span className="text-farm-gold">{formatMoney(poll.totalPledged)}</span> pledged so far
+        </p>
       )}
 
       {poll.resultsVisible && (
@@ -640,6 +664,9 @@ function PollCard({ poll, token, currentUserId, isAdmin, onChanged }) {
                   <p className="text-farm-cream/80">
                     <span className="font-medium text-farm-cream">{v.name}</span> voted{' '}
                     <span className="text-farm-gold">{poll.options[v.optionIndex]}</span>
+                    {v.pledgeAmount != null && (
+                      <span className="text-farm-cream/50"> · willing to give {formatMoney(v.pledgeAmount)}</span>
+                    )}
                   </p>
                   {v.note && <p className="text-farm-cream/40 text-xs mt-1">{v.note}</p>}
                 </div>

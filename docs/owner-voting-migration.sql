@@ -18,8 +18,11 @@ CREATE TABLE IF NOT EXISTS poll_votes (
   user_id TEXT NOT NULL,
   option_index INT NOT NULL,
   note TEXT,
+  pledge_amount NUMERIC(10,2),
   voted_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(poll_id, user_id)
 );
+
+ALTER TABLE poll_votes ADD COLUMN IF NOT EXISTS pledge_amount NUMERIC(10,2);
 
 UPDATE users SET is_owner = TRUE WHERE LOWER(email) = LOWER('hnrywltn@gmail.com');
