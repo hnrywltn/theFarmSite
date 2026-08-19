@@ -403,6 +403,16 @@ function visibilityLabel(v) {
   return VISIBILITY_OPTIONS.find((o) => o.value === v)?.label || v
 }
 
+const PRIORITY_OPTIONS = [
+  { value: 'red', label: 'Red — Urgent', hint: 'Something required, needs a decision soon.', dot: 'bg-red-400', text: 'text-red-400', border: 'border-red-400/40' },
+  { value: 'yellow', label: 'Yellow — Important', hint: 'Matters, but no rush.', dot: 'bg-yellow-400', text: 'text-yellow-400', border: 'border-yellow-400/40' },
+  { value: 'green', label: 'Green — Nice to have', hint: 'Optional extras, like art for the cabin.', dot: 'bg-green-400', text: 'text-green-400', border: 'border-green-400/40' },
+]
+
+function priorityMeta(p) {
+  return PRIORITY_OPTIONS.find((o) => o.value === p) || PRIORITY_OPTIONS[1]
+}
+
 function formatMoney(n) {
   return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 }
@@ -412,6 +422,7 @@ function NewPollForm({ token, onCreated, onCancel }) {
   const [description, setDescription] = useState('')
   const [options, setOptions] = useState(['', ''])
   const [visibility, setVisibility] = useState('immediate')
+  const [priority, setPriority] = useState('yellow')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -429,7 +440,7 @@ function NewPollForm({ token, onCreated, onCancel }) {
     const res = await fetch('/api/polls', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ title, description, options: cleaned, visibility }),
+      body: JSON.stringify({ title, description, options: cleaned, visibility, priority }),
     })
     const data = await res.json()
     setSaving(false)
@@ -479,6 +490,29 @@ function NewPollForm({ token, onCreated, onCancel }) {
         >
           + Add option
         </button>
+      </div>
+      <div>
+        <p className="label-sm text-xs text-farm-cream/40 mb-2">Priority</p>
+        <div className="flex flex-col gap-2">
+          {PRIORITY_OPTIONS.map((opt) => (
+            <label key={opt.value} className="flex items-start gap-2 text-sm text-farm-cream/70 cursor-pointer">
+              <input
+                type="radio"
+                name="priority"
+                checked={priority === opt.value}
+                onChange={() => setPriority(opt.value)}
+                className="mt-1"
+              />
+              <span className="flex items-center gap-2">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${opt.dot}`} />
+                <span>
+                  {opt.label}
+                  <span className="block text-farm-cream/30 text-xs">{opt.hint}</span>
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
       <div>
         <p className="label-sm text-xs text-farm-cream/40 mb-2">Vote visibility</p>
@@ -561,12 +595,16 @@ function PollCard({ poll, token, currentUserId, isAdmin, onChanged }) {
   const canManagePoll = isAdmin || poll.createdBy === currentUserId
   const counts = poll.options.map((_, i) => poll.votes.filter((v) => v.optionIndex === i).length)
   const maxCount = Math.max(1, ...counts)
+  const priority = priorityMeta(poll.priority)
 
   return (
     <div className="border border-farm-cream/10 p-5 flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-serif text-lg text-farm-cream">{poll.title}</h3>
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`inline-block w-2 h-2 rounded-full ${priority.dot}`} title={priority.label} />
+            <h3 className="font-serif text-lg text-farm-cream">{poll.title}</h3>
+          </div>
           {poll.description && <p className="text-farm-cream/50 text-sm mt-1">{poll.description}</p>}
         </div>
         <span

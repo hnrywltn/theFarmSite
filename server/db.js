@@ -60,12 +60,14 @@ async function init() {
       description TEXT,
       options JSONB NOT NULL,
       visibility TEXT NOT NULL DEFAULT 'immediate',
+      priority TEXT NOT NULL DEFAULT 'yellow',
       status TEXT NOT NULL DEFAULT 'open',
       created_by TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       closed_at TIMESTAMPTZ
     )
   `)
+  await pool.query("ALTER TABLE polls ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'yellow'")
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS poll_votes (

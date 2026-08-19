@@ -6,11 +6,14 @@ CREATE TABLE IF NOT EXISTS polls (
   description TEXT,
   options JSONB NOT NULL,
   visibility TEXT NOT NULL DEFAULT 'immediate',
+  priority TEXT NOT NULL DEFAULT 'yellow',
   status TEXT NOT NULL DEFAULT 'open',
   created_by TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   closed_at TIMESTAMPTZ
 );
+
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'yellow';
 
 CREATE TABLE IF NOT EXISTS poll_votes (
   id TEXT PRIMARY KEY,

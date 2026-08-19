@@ -307,6 +307,7 @@ app.get('/api/activity', requireAuth, async (req, res) => {
 
 // ─── Polls (owners only) ───────────────────────────────────────────────────────
 const POLL_VISIBILITIES = ['immediate', 'after_vote', 'after_close']
+const POLL_PRIORITIES = ['red', 'yellow', 'green']
 
 app.get('/api/polls', requireAuth, requireOwner, async (req, res) => {
   const polls = await db.query('SELECT * FROM polls ORDER BY created_at DESC')
@@ -334,6 +335,7 @@ app.get('/api/polls', requireAuth, requireOwner, async (req, res) => {
       description: p.description,
       options: p.options,
       visibility: p.visibility,
+      priority: p.priority,
       status: p.status,
       createdBy: p.created_by,
       createdByName: creatorMap[p.created_by] || 'unknown',
@@ -363,15 +365,16 @@ app.get('/api/polls', requireAuth, requireOwner, async (req, res) => {
 })
 
 app.post('/api/polls', requireAuth, requireOwner, async (req, res) => {
-  const { title, description, options, visibility } = req.body
+  const { title, description, options, visibility, priority } = req.body
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' })
   const cleanOptions = Array.isArray(options) ? options.map((o) => String(o).trim()).filter(Boolean) : []
   if (cleanOptions.length < 2) return res.status(400).json({ error: 'At least 2 options required' })
   if (!POLL_VISIBILITIES.includes(visibility)) return res.status(400).json({ error: 'Invalid visibility' })
+  if (!POLL_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority' })
   const id = randomUUID()
   await db.query(
-    'INSERT INTO polls (id, title, description, options, visibility, created_by) VALUES ($1,$2,$3,$4,$5,$6)',
-    [id, title.trim(), description?.trim() || null, JSON.stringify(cleanOptions), visibility, req.user.id]
+    'INSERT INTO polls (id, title, description, options, visibility, priority, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [id, title.trim(), description?.trim() || null, JSON.stringify(cleanOptions), visibility, priority, req.user.id]
   )
   logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'created_poll', title.trim())
   res.json({ ok: true, id })
