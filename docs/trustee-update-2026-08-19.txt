@@ -8,7 +8,9 @@ I've made each of you an "owner" on the site. That unlocks a new "Family Votes" 
 - Vote on things others post, and leave a note explaining your thinking
 - Say how much you'd be willing to contribute if a decision comes down to money
 
-When someone starts a vote, they choose how the results are shown: visible to everyone right away, visible only after you've cast your own vote, or hidden until the vote is closed. That way we can keep things fair depending on what's being decided.
+When someone starts a vote, they also mark how urgent it is — red for something required that needs a decision soon, yellow for the normal middle ground, or green for optional extras (like buying a piece of art for the cabin).
+
+They also choose how the results are shown: visible to everyone right away, visible only after you've cast your own vote, or hidden until the vote is closed. That way we can keep things fair depending on what's being decided.
 
 To use it: sign in at nanaandpapas.com, click Admin, and you'll see "Family Votes" on that page.
 
