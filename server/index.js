@@ -190,6 +190,20 @@ app.patch('/api/users/:id/owner', requireAuth, async (req, res) => {
   res.json({ id: target.id, email: target.email, name: target.name, addedBy: target.addedBy, suspended: target.suspended, isOwner, createdAt: target.createdAt })
 })
 
+// ─── Users: set password (admin only) ─────────────────────────────────────────
+app.patch('/api/users/:id/password', requireAuth, async (req, res) => {
+  if (req.user.email !== ADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' })
+  const { newPassword } = req.body
+  if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
+  const rows = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id])
+  const target = db.mapUser(rows[0])
+  if (!target) return res.status(404).json({ error: 'Not found' })
+  const hash = await bcrypt.hash(newPassword, 10)
+  await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, target.id])
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'reset_password', target.email)
+  res.json({ ok: true })
+})
+
 // ─── Users: delete ────────────────────────────────────────────────────────────
 app.delete('/api/users/:id', requireAuth, async (req, res) => {
   const rows = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id])

@@ -161,6 +161,77 @@ function InviteModal({ email, onClose }) {
   )
 }
 
+function SetPasswordModal({ userId, email, token, onClose, onDone }) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (password !== confirm) { setError('Passwords do not match'); return }
+    setSaving(true)
+    setError('')
+    const res = await fetch(`/api/users/${userId}/password`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ newPassword: password }),
+    })
+    const data = await res.json()
+    setSaving(false)
+    if (res.ok) onDone()
+    else setError(data.error)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-farm-dark/90 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-farm-dark border border-farm-gold/20 p-8 w-full max-w-sm flex flex-col gap-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-serif text-xl text-farm-cream font-light">Set Password</h2>
+          <p className="text-farm-cream/40 text-xs mt-1">For {email}</p>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError('') }}
+            placeholder="New password"
+            className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-3 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+          />
+          <input
+            type="password"
+            value={confirm}
+            onChange={(e) => { setConfirm(e.target.value); setError('') }}
+            placeholder="Confirm password"
+            className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-3 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+          />
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+          <div className="flex gap-3 mt-1">
+            <button
+              type="submit"
+              disabled={saving}
+              className="label-sm text-farm-gold border border-farm-gold/40 px-5 py-2.5 hover:bg-farm-gold/10 transition-colors disabled:opacity-40 flex-1"
+            >
+              {saving ? 'Saving…' : 'Set Password'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="label-sm text-farm-cream/40 border border-farm-cream/15 px-5 py-2.5 hover:text-farm-cream hover:border-farm-cream/30 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function Row({ label, value }) {
   return (
     <div className="flex justify-between gap-4 text-sm">
@@ -177,6 +248,7 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
   const [addError, setAddError] = useState('')
   const [actionLoading, setActionLoading] = useState(null)
   const [inviteEmail, setInviteEmail] = useState(null)
+  const [passwordTarget, setPasswordTarget] = useState(null)
 
   useEffect(() => {
     fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
@@ -243,6 +315,15 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
   return (
     <>
     {inviteEmail && <InviteModal email={inviteEmail} onClose={() => setInviteEmail(null)} />}
+    {passwordTarget && (
+      <SetPasswordModal
+        userId={passwordTarget.id}
+        email={passwordTarget.email}
+        token={token}
+        onClose={() => setPasswordTarget(null)}
+        onDone={() => setPasswordTarget(null)}
+      />
+    )}
     <div className="bg-farm-dark border border-farm-cream/10 p-6">
       <h2 className="font-serif text-xl text-farm-cream mb-6">Users</h2>
 
@@ -291,6 +372,14 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
                     className="label-sm text-xs text-farm-gold/70 hover:text-farm-gold border border-farm-gold/25 hover:border-farm-gold/40 px-3 py-1.5 transition-colors disabled:opacity-30"
                   >
                     {u.isOwner ? 'Remove Owner' : 'Make Owner'}
+                  </button>
+                )}
+                {currentUserEmail === ADMIN_EMAIL && (
+                  <button
+                    onClick={() => setPasswordTarget({ id: u.id, email: u.email })}
+                    className="label-sm text-xs text-farm-cream/40 hover:text-farm-cream border border-farm-cream/15 hover:border-farm-cream/30 px-3 py-1.5 transition-colors"
+                  >
+                    Set Password
                   </button>
                 )}
                 {canManage && (
@@ -346,6 +435,7 @@ function actionLabel(action, detail) {
     case 'changed_password':return 'changed their password'
     case 'updated_name':    return detail ? `set display name to "${detail}"` : 'cleared their display name'
     case 'made_owner':      return `made ${detail} an owner`
+    case 'reset_password':  return `set a new password for ${detail}`
     case 'removed_owner':   return `removed ${detail} as an owner`
     case 'created_poll':    return `started a vote: "${detail}"`
     case 'voted_poll':      return `voted on "${detail}"`
