@@ -1,0 +1,17 @@
+Hey everyone,
+
+Wanted to fill you all in on an update I made to the farm website (nanaandpapas.com).
+
+I've made each of you an "owner" on the site. That unlocks a new "Family Votes" section in the admin panel where any of us can:
+
+- Start a vote on something we need to decide together — give it a title, a description, and a couple of options to choose from
+- Vote on things others post, and leave a note explaining your thinking
+- Say how much you'd be willing to contribute if a decision comes down to money
+
+When someone starts a vote, they choose how the results are shown: visible to everyone right away, visible only after you've cast your own vote, or hidden until the vote is closed. That way we can keep things fair depending on what's being decided.
+
+To use it: sign in at nanaandpapas.com, click Admin, and you'll see "Family Votes" on that page.
+
+Let me know if you run into any trouble or want to see anything added.
+
+Henry
