@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
 const AuthContext = createContext(null)
 
@@ -42,6 +42,15 @@ export function AuthProvider({ children }) {
       return { ...prev, user: newUser }
     })
   }, [])
+
+  // Refresh name/owner status on load in case they changed since the last login.
+  useEffect(() => {
+    if (!token) return
+    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data) updateProfile(data) })
+      .catch(() => {})
+  }, [token, updateProfile])
 
   return (
     <AuthContext.Provider value={{ isLoggedIn: !!token, token, user, login, logout, updateProfile }}>

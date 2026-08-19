@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Nav from '../components/Nav'
 import Footer from '../components/Footer'
 import { useAuth } from '../context/AuthContext'
@@ -228,6 +228,18 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
     if (res.ok) setUsers((prev) => prev.filter((u) => u.id !== userId))
   }
 
+  async function handleToggleOwner(u) {
+    setActionLoading(`${u.id}-owner`)
+    const res = await fetch(`/api/users/${u.id}/owner`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ isOwner: !u.isOwner }),
+    })
+    const data = await res.json()
+    setActionLoading(null)
+    if (res.ok) setUsers((prev) => prev.map((x) => (x.id === data.id ? data : x)))
+  }
+
   return (
     <>
     {inviteEmail && <InviteModal email={inviteEmail} onClose={() => setInviteEmail(null)} />}
@@ -260,30 +272,46 @@ function UserManagement({ token, currentUserId, currentUserEmail }) {
             <div key={u.id} className="flex flex-wrap items-center justify-between py-3 gap-x-4 gap-y-2">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="text-farm-cream/80 text-sm truncate">{u.email}</span>
+                {u.isOwner && (
+                  <span className="label-sm text-xs text-farm-gold border border-farm-gold/30 px-2 py-0.5 shrink-0">
+                    Owner
+                  </span>
+                )}
                 {u.suspended && (
                   <span className="label-sm text-xs text-red-400 border border-red-400/30 px-2 py-0.5 shrink-0">
                     Suspended
                   </span>
                 )}
               </div>
-              {canManage && (
-                <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0">
+                {currentUserEmail === ADMIN_EMAIL && (
                   <button
-                    onClick={() => handleSuspend(u)}
-                    disabled={actionLoading === `${u.id}-suspend`}
-                    className="label-sm text-xs text-farm-cream/40 hover:text-farm-cream border border-farm-cream/15 hover:border-farm-cream/30 px-3 py-1.5 transition-colors disabled:opacity-30"
+                    onClick={() => handleToggleOwner(u)}
+                    disabled={actionLoading === `${u.id}-owner`}
+                    className="label-sm text-xs text-farm-gold/70 hover:text-farm-gold border border-farm-gold/25 hover:border-farm-gold/40 px-3 py-1.5 transition-colors disabled:opacity-30"
                   >
-                    {u.suspended ? 'Unsuspend' : 'Suspend'}
+                    {u.isOwner ? 'Remove Owner' : 'Make Owner'}
                   </button>
-                  <button
-                    onClick={() => handleDelete(u.id)}
-                    disabled={actionLoading === `${u.id}-delete`}
-                    className="label-sm text-xs text-farm-cream/40 hover:text-red-400 border border-farm-cream/15 hover:border-red-400/30 px-3 py-1.5 transition-colors disabled:opacity-30"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
+                )}
+                {canManage && (
+                  <>
+                    <button
+                      onClick={() => handleSuspend(u)}
+                      disabled={actionLoading === `${u.id}-suspend`}
+                      className="label-sm text-xs text-farm-cream/40 hover:text-farm-cream border border-farm-cream/15 hover:border-farm-cream/30 px-3 py-1.5 transition-colors disabled:opacity-30"
+                    >
+                      {u.suspended ? 'Unsuspend' : 'Suspend'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(u.id)}
+                      disabled={actionLoading === `${u.id}-delete`}
+                      className="label-sm text-xs text-farm-cream/40 hover:text-red-400 border border-farm-cream/15 hover:border-red-400/30 px-3 py-1.5 transition-colors disabled:opacity-30"
+                    >
+                      Remove
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )
         })}
@@ -317,6 +345,12 @@ function actionLabel(action, detail) {
     case 'removed_user':    return `removed ${detail}`
     case 'changed_password':return 'changed their password'
     case 'updated_name':    return detail ? `set display name to "${detail}"` : 'cleared their display name'
+    case 'made_owner':      return `made ${detail} an owner`
+    case 'removed_owner':   return `removed ${detail} as an owner`
+    case 'created_poll':    return `started a vote: "${detail}"`
+    case 'voted_poll':      return `voted on "${detail}"`
+    case 'closed_poll':     return `closed the vote "${detail}"`
+    case 'deleted_poll':    return `deleted the vote "${detail}"`
     default:                return action
   }
 }
@@ -359,6 +393,336 @@ function ActivityLog({ token }) {
   )
 }
 
+const VISIBILITY_OPTIONS = [
+  { value: 'immediate', label: 'Visible immediately', hint: 'Everyone sees choices and notes as votes come in.' },
+  { value: 'after_vote', label: 'Visible after you vote', hint: "You'll see others' votes once you've cast your own." },
+  { value: 'after_close', label: 'Visible after vote closes', hint: 'Nothing is shown until the vote is closed.' },
+]
+
+function visibilityLabel(v) {
+  return VISIBILITY_OPTIONS.find((o) => o.value === v)?.label || v
+}
+
+function NewPollForm({ token, onCreated, onCancel }) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [options, setOptions] = useState(['', ''])
+  const [visibility, setVisibility] = useState('immediate')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function updateOption(i, value) {
+    setOptions((prev) => prev.map((o, idx) => (idx === i ? value : o)))
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const cleaned = options.map((o) => o.trim()).filter(Boolean)
+    if (!title.trim()) { setError('Title required'); return }
+    if (cleaned.length < 2) { setError('Add at least 2 options'); return }
+    setSaving(true)
+    setError('')
+    const res = await fetch('/api/polls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ title, description, options: cleaned, visibility }),
+    })
+    const data = await res.json()
+    setSaving(false)
+    if (res.ok) onCreated()
+    else setError(data.error)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="border border-farm-gold/20 p-5 flex flex-col gap-4 mb-6">
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="What are we deciding?"
+        className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-2.5 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Description (optional)"
+        rows={2}
+        className="bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-2.5 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+      />
+      <div className="flex flex-col gap-2">
+        {options.map((o, i) => (
+          <div key={i} className="flex gap-2">
+            <input
+              value={o}
+              onChange={(e) => updateOption(i, e.target.value)}
+              placeholder={`Option ${i + 1}`}
+              className="flex-1 bg-transparent border border-farm-cream/20 text-farm-cream px-4 py-2 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+            />
+            {options.length > 2 && (
+              <button
+                type="button"
+                onClick={() => setOptions((prev) => prev.filter((_, idx) => idx !== i))}
+                className="text-farm-cream/40 hover:text-red-400 px-2"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => setOptions((prev) => [...prev, ''])}
+          className="label-sm text-xs text-farm-cream/40 hover:text-farm-cream self-start"
+        >
+          + Add option
+        </button>
+      </div>
+      <div>
+        <p className="label-sm text-xs text-farm-cream/40 mb-2">Vote visibility</p>
+        <div className="flex flex-col gap-2">
+          {VISIBILITY_OPTIONS.map((opt) => (
+            <label key={opt.value} className="flex items-start gap-2 text-sm text-farm-cream/70 cursor-pointer">
+              <input
+                type="radio"
+                name="visibility"
+                checked={visibility === opt.value}
+                onChange={() => setVisibility(opt.value)}
+                className="mt-1"
+              />
+              <span>
+                {opt.label}
+                <span className="block text-farm-cream/30 text-xs">{opt.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={saving}
+          className="label-sm text-farm-gold border border-farm-gold/40 px-5 py-2.5 hover:bg-farm-gold/10 transition-colors disabled:opacity-40"
+        >
+          {saving ? 'Starting…' : 'Start Vote'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="label-sm text-farm-cream/40 border border-farm-cream/15 px-5 py-2.5 hover:text-farm-cream hover:border-farm-cream/30 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function PollCard({ poll, token, currentUserId, isAdmin, onChanged }) {
+  const [selected, setSelected] = useState(poll.myVote?.optionIndex ?? null)
+  const [note, setNote] = useState(poll.myVote?.note || '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [showVoters, setShowVoters] = useState(false)
+
+  async function handleVote(e) {
+    e.preventDefault()
+    if (selected === null) { setError('Choose an option'); return }
+    setSaving(true)
+    setError('')
+    const res = await fetch(`/api/polls/${poll.id}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ optionIndex: selected, note }),
+    })
+    const data = await res.json()
+    setSaving(false)
+    if (res.ok) onChanged()
+    else setError(data.error)
+  }
+
+  async function handleClose() {
+    if (!window.confirm('Close this vote? No more votes will be accepted.')) return
+    await fetch(`/api/polls/${poll.id}/close`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+    onChanged()
+  }
+
+  async function handleDelete() {
+    if (!window.confirm('Delete this vote?')) return
+    await fetch(`/api/polls/${poll.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    onChanged()
+  }
+
+  const canManagePoll = isAdmin || poll.createdBy === currentUserId
+  const counts = poll.options.map((_, i) => poll.votes.filter((v) => v.optionIndex === i).length)
+  const maxCount = Math.max(1, ...counts)
+
+  return (
+    <div className="border border-farm-cream/10 p-5 flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-serif text-lg text-farm-cream">{poll.title}</h3>
+          {poll.description && <p className="text-farm-cream/50 text-sm mt-1">{poll.description}</p>}
+        </div>
+        <span
+          className={`label-sm text-xs px-2 py-0.5 border shrink-0 ${
+            poll.status === 'open' ? 'text-farm-gold border-farm-gold/30' : 'text-farm-cream/40 border-farm-cream/15'
+          }`}
+        >
+          {poll.status === 'open' ? 'Open' : 'Closed'}
+        </span>
+      </div>
+
+      <p className="text-farm-cream/30 text-xs">
+        Started by {poll.createdByName} · {poll.totalVotes} of {poll.totalOwners} voted · {visibilityLabel(poll.visibility)}
+      </p>
+
+      {poll.status === 'open' && (
+        <form onSubmit={handleVote} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
+            {poll.options.map((opt, i) => (
+              <label key={i} className="flex items-center gap-2 text-sm text-farm-cream/80 cursor-pointer">
+                <input
+                  type="radio"
+                  name={`poll-${poll.id}`}
+                  checked={selected === i}
+                  onChange={() => setSelected(i)}
+                />
+                {opt}
+              </label>
+            ))}
+          </div>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Add a note with your vote (optional)"
+            rows={2}
+            className="bg-transparent border border-farm-cream/20 text-farm-cream px-3 py-2 text-sm placeholder:text-farm-cream/30 focus:outline-none focus:border-farm-gold/50"
+          />
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+          <button
+            type="submit"
+            disabled={saving}
+            className="label-sm text-farm-gold border border-farm-gold/40 px-5 py-2 hover:bg-farm-gold/10 transition-colors disabled:opacity-40 self-start"
+          >
+            {saving ? 'Saving…' : poll.myVote ? 'Update Vote' : 'Cast Vote'}
+          </button>
+        </form>
+      )}
+
+      {poll.resultsVisible && (
+        <div className="flex flex-col gap-2">
+          {poll.options.map((opt, i) => (
+            <div key={i} className="text-sm">
+              <div className="flex justify-between text-farm-cream/70">
+                <span>{opt}</span>
+                <span className="text-farm-cream/40">{counts[i]}</span>
+              </div>
+              <div className="h-1 bg-farm-cream/10 mt-1">
+                <div className="h-1 bg-farm-gold/50" style={{ width: `${(counts[i] / maxCount) * 100}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {poll.resultsVisible && poll.votes.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowVoters((v) => !v)}
+            className="label-sm text-xs text-farm-cream/40 hover:text-farm-cream"
+          >
+            {showVoters ? 'Hide votes' : 'Show votes'}
+          </button>
+          {showVoters && (
+            <div className="mt-3 divide-y divide-farm-cream/10">
+              {poll.votes.map((v) => (
+                <div key={v.userId} className="py-2 text-sm">
+                  <p className="text-farm-cream/80">
+                    <span className="font-medium text-farm-cream">{v.name}</span> voted{' '}
+                    <span className="text-farm-gold">{poll.options[v.optionIndex]}</span>
+                  </p>
+                  {v.note && <p className="text-farm-cream/40 text-xs mt-1">{v.note}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!poll.resultsVisible && poll.myVote && (
+        <p className="text-farm-cream/30 text-xs">Your vote is recorded. Results aren't visible yet.</p>
+      )}
+
+      {canManagePoll && (
+        <div className="flex gap-2 pt-2 border-t border-farm-cream/10">
+          {poll.status === 'open' && (
+            <button
+              onClick={handleClose}
+              className="label-sm text-xs text-farm-cream/40 hover:text-farm-cream border border-farm-cream/15 hover:border-farm-cream/30 px-3 py-1.5 transition-colors"
+            >
+              Close Vote
+            </button>
+          )}
+          <button
+            onClick={handleDelete}
+            className="label-sm text-xs text-farm-cream/40 hover:text-red-400 border border-farm-cream/15 hover:border-red-400/30 px-3 py-1.5 transition-colors"
+          >
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FamilyVotes({ token, currentUserId, isAdmin }) {
+  const [polls, setPolls] = useState([])
+  const [loaded, setLoaded] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+
+  const load = useCallback(() => {
+    fetch('/api/polls', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setPolls(data) })
+      .catch(() => {})
+      .finally(() => setLoaded(true))
+  }, [token])
+
+  useEffect(() => { load() }, [load])
+
+  return (
+    <div className="bg-farm-dark border border-farm-cream/10 p-6 mb-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-serif text-xl text-farm-cream">Family Votes</h2>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="label-sm text-farm-gold border border-farm-gold/40 px-5 py-2 hover:bg-farm-gold/10 transition-colors"
+          >
+            + New Vote
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <NewPollForm
+          token={token}
+          onCreated={() => { setShowForm(false); load() }}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
+
+      {loaded && polls.length === 0 && <p className="text-farm-cream/30 text-sm">No votes yet.</p>}
+
+      <div className="flex flex-col gap-4">
+        {polls.map((p) => (
+          <PollCard key={p.id} poll={p} token={token} currentUserId={currentUserId} isAdmin={isAdmin} onChanged={load} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const { token, user, updateProfile } = useAuth()
   const isAdmin = user?.email === ADMIN_EMAIL
@@ -392,6 +756,10 @@ export default function AdminPage() {
             <AccountSettings token={token} currentName={user?.name} updateProfile={updateProfile} />
             <UserManagement token={token} currentUserId={user?.id} currentUserEmail={user?.email} />
           </div>
+
+          {user?.isOwner && (
+            <FamilyVotes token={token} currentUserId={user?.id} isAdmin={isAdmin} />
+          )}
 
           {isAdmin && <ActivityLog token={token} />}
         </div>

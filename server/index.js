@@ -31,6 +31,12 @@ async function logActivity(actorId, actorEmail, actorName, action, detail = null
   }
 }
 
+async function requireOwner(req, res, next) {
+  const rows = await db.query('SELECT is_owner FROM users WHERE id = $1', [req.user.id])
+  if (!rows[0]?.is_owner) return res.status(403).json({ error: 'Owners only' })
+  next()
+}
+
 function displayName(user) {
   return user?.name || user?.email?.split('@')[0] || 'unknown'
 }
@@ -95,7 +101,14 @@ app.post('/api/auth/login', async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' })
   logActivity(user.id, user.email, displayName(user), 'signed_in')
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name } })
+  res.json({ token, user: { id: user.id, email: user.email, name: user.name, isOwner: user.isOwner } })
+})
+
+// ─── Auth: refresh current user (name/owner status may have changed) ─────────
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  const rows = await db.query('SELECT id, email, name, is_owner FROM users WHERE id = $1', [req.user.id])
+  if (!rows.length) return res.status(404).json({ error: 'Not found' })
+  res.json({ id: rows[0].id, email: rows[0].email, name: rows[0].name, isOwner: rows[0].is_owner })
 })
 
 // ─── Auth: change password ─────────────────────────────────────────────────────
@@ -129,8 +142,8 @@ app.patch('/api/users/me', requireAuth, async (req, res) => {
 
 // ─── Users: list ──────────────────────────────────────────────────────────────
 app.get('/api/users', requireAuth, async (req, res) => {
-  const rows = await db.query('SELECT id, email, name, added_by, suspended, created_at FROM users ORDER BY created_at ASC')
-  res.json(rows.map((r) => ({ id: r.id, email: r.email, name: r.name, addedBy: r.added_by, suspended: r.suspended, createdAt: r.created_at })))
+  const rows = await db.query('SELECT id, email, name, added_by, suspended, is_owner, created_at FROM users ORDER BY created_at ASC')
+  res.json(rows.map((r) => ({ id: r.id, email: r.email, name: r.name, addedBy: r.added_by, suspended: r.suspended, isOwner: r.is_owner, createdAt: r.created_at })))
 })
 
 // ─── Users: add ───────────────────────────────────────────────────────────────
@@ -162,7 +175,19 @@ app.patch('/api/users/:id', requireAuth, async (req, res) => {
   const newSuspended = req.body.suspended ?? !target.suspended
   await db.query('UPDATE users SET suspended = $1 WHERE id = $2', [newSuspended, target.id])
   logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), newSuspended ? 'suspended_user' : 'unsuspended_user', target.email)
-  res.json({ id: target.id, email: target.email, addedBy: target.addedBy, suspended: newSuspended, createdAt: target.createdAt })
+  res.json({ id: target.id, email: target.email, name: target.name, addedBy: target.addedBy, suspended: newSuspended, isOwner: target.isOwner, createdAt: target.createdAt })
+})
+
+// ─── Users: toggle owner status (admin only) ─────────────────────────────────
+app.patch('/api/users/:id/owner', requireAuth, async (req, res) => {
+  if (req.user.email !== ADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden' })
+  const rows = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id])
+  const target = db.mapUser(rows[0])
+  if (!target) return res.status(404).json({ error: 'Not found' })
+  const isOwner = !!req.body.isOwner
+  await db.query('UPDATE users SET is_owner = $1 WHERE id = $2', [isOwner, target.id])
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), isOwner ? 'made_owner' : 'removed_owner', target.email)
+  res.json({ id: target.id, email: target.email, name: target.name, addedBy: target.addedBy, suspended: target.suspended, isOwner, createdAt: target.createdAt })
 })
 
 // ─── Users: delete ────────────────────────────────────────────────────────────
@@ -278,6 +303,107 @@ app.get('/api/activity', requireAuth, async (req, res) => {
     action: r.action,
     detail: r.detail,
   })))
+})
+
+// ─── Polls (owners only) ───────────────────────────────────────────────────────
+const POLL_VISIBILITIES = ['immediate', 'after_vote', 'after_close']
+
+app.get('/api/polls', requireAuth, requireOwner, async (req, res) => {
+  const polls = await db.query('SELECT * FROM polls ORDER BY created_at DESC')
+  const voteRows = await db.query(
+    `SELECT pv.poll_id, pv.user_id, pv.option_index, pv.note, pv.voted_at, u.name, u.email
+     FROM poll_votes pv JOIN users u ON u.id = pv.user_id`
+  )
+  const [{ count: ownerCount }] = await db.query('SELECT COUNT(*) FROM users WHERE is_owner = TRUE')
+  const creatorIds = [...new Set(polls.map((p) => p.created_by))]
+  const creators = creatorIds.length
+    ? await db.query('SELECT id, name, email FROM users WHERE id = ANY($1)', [creatorIds])
+    : []
+  const creatorMap = Object.fromEntries(creators.map((c) => [c.id, displayName(c)]))
+
+  res.json(polls.map((p) => {
+    const pollVotes = voteRows.filter((v) => v.poll_id === p.id)
+    const myVote = pollVotes.find((v) => v.user_id === req.user.id)
+    const resultsVisible =
+      p.visibility === 'immediate' ||
+      (p.visibility === 'after_vote' && !!myVote) ||
+      (p.visibility === 'after_close' && p.status === 'closed')
+    return {
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      options: p.options,
+      visibility: p.visibility,
+      status: p.status,
+      createdBy: p.created_by,
+      createdByName: creatorMap[p.created_by] || 'unknown',
+      createdAt: p.created_at,
+      closedAt: p.closed_at,
+      myVote: myVote ? { optionIndex: myVote.option_index, note: myVote.note } : null,
+      totalVotes: pollVotes.length,
+      totalOwners: parseInt(ownerCount, 10),
+      resultsVisible,
+      votes: resultsVisible
+        ? pollVotes.map((v) => ({ userId: v.user_id, name: displayName(v), optionIndex: v.option_index, note: v.note, votedAt: v.voted_at }))
+        : [],
+    }
+  }))
+})
+
+app.post('/api/polls', requireAuth, requireOwner, async (req, res) => {
+  const { title, description, options, visibility } = req.body
+  if (!title?.trim()) return res.status(400).json({ error: 'Title required' })
+  const cleanOptions = Array.isArray(options) ? options.map((o) => String(o).trim()).filter(Boolean) : []
+  if (cleanOptions.length < 2) return res.status(400).json({ error: 'At least 2 options required' })
+  if (!POLL_VISIBILITIES.includes(visibility)) return res.status(400).json({ error: 'Invalid visibility' })
+  const id = randomUUID()
+  await db.query(
+    'INSERT INTO polls (id, title, description, options, visibility, created_by) VALUES ($1,$2,$3,$4,$5,$6)',
+    [id, title.trim(), description?.trim() || null, JSON.stringify(cleanOptions), visibility, req.user.id]
+  )
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'created_poll', title.trim())
+  res.json({ ok: true, id })
+})
+
+app.post('/api/polls/:id/vote', requireAuth, requireOwner, async (req, res) => {
+  const rows = await db.query('SELECT * FROM polls WHERE id = $1', [req.params.id])
+  const poll = rows[0]
+  if (!poll) return res.status(404).json({ error: 'Not found' })
+  if (poll.status === 'closed') return res.status(403).json({ error: 'Poll is closed' })
+  const { optionIndex, note } = req.body
+  if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= poll.options.length) {
+    return res.status(400).json({ error: 'Invalid option' })
+  }
+  await db.query(
+    `INSERT INTO poll_votes (id, poll_id, user_id, option_index, note)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (poll_id, user_id) DO UPDATE SET option_index = $4, note = $5, voted_at = NOW()`,
+    [randomUUID(), poll.id, req.user.id, optionIndex, note?.trim() || null]
+  )
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'voted_poll', poll.title)
+  res.json({ ok: true })
+})
+
+app.post('/api/polls/:id/close', requireAuth, requireOwner, async (req, res) => {
+  const rows = await db.query('SELECT * FROM polls WHERE id = $1', [req.params.id])
+  const poll = rows[0]
+  if (!poll) return res.status(404).json({ error: 'Not found' })
+  const isAdmin = req.user.email === ADMIN_EMAIL
+  if (!isAdmin && poll.created_by !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
+  await db.query("UPDATE polls SET status = 'closed', closed_at = NOW() WHERE id = $1", [poll.id])
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'closed_poll', poll.title)
+  res.json({ ok: true })
+})
+
+app.delete('/api/polls/:id', requireAuth, requireOwner, async (req, res) => {
+  const rows = await db.query('SELECT * FROM polls WHERE id = $1', [req.params.id])
+  const poll = rows[0]
+  if (!poll) return res.status(404).json({ error: 'Not found' })
+  const isAdmin = req.user.email === ADMIN_EMAIL
+  if (!isAdmin && poll.created_by !== req.user.id) return res.status(403).json({ error: 'Forbidden' })
+  await db.query('DELETE FROM polls WHERE id = $1', [poll.id])
+  logActivity(req.user.id, req.user.email, await displayNameById(req.user.id), 'deleted_poll', poll.title)
+  res.json({ ok: true })
 })
 
 // ─── Guestbook ────────────────────────────────────────────────────────────────
